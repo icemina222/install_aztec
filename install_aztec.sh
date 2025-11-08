@@ -380,7 +380,7 @@ echo_info "步骤9: 生成 .env 文件..."
   
 mkdir -p /root/.aztec/data  
   
-cat > /root/.aztec/.env << 'ENVEOF'  
+cat > /root/.aztec/.env << ENVEOF  
 DATA_DIRECTORY=./data  
 KEY_STORE_DIRECTORY=./keystore  
 LOG_LEVEL=info  
@@ -391,6 +391,7 @@ P2P_PORT=40400
 AZTEC_PORT=8080  
 AZTEC_ADMIN_PORT=8880  
 ENVEOF  
+
   
 chmod 600 /root/.aztec/.env  
 echo_info ".env 文件已创建: /root/.aztec/.env"  
