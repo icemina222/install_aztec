@@ -1,10 +1,8 @@
 #!/bin/bash  
 # ============================================  
 # Aztec 2.1.2 节点批量安装脚本  
-# 支持 Docker Compose 部署 + 自动监控  
+# 支持 Docker Compose 部署 + 自动监控 + Screen 会话  
 # ============================================  
-  
-set -e  
   
 # 颜色输出  
 RED='\033[0;31m'  
@@ -18,6 +16,115 @@ echo_warn() { echo -e "$${YELLOW}[WARN]$${NC} $1"; }
 echo_error() { echo -e "$${RED}[ERROR]$${NC} $1"; }  
 echo_step() { echo -e "$${BLUE}[STEP]$${NC} $1"; }  
   
+SCREEN_NAME="aztec_install"  
+SCRIPT_PATH="/root/install_aztec.sh"  
+  
+# ============================================  
+# 检查是否在 Screen 中运行  
+# ============================================  
+if [ -z "$STY" ]; then  
+    # 不在 screen 中，需要创建 screen 会话  
+      
+    echo_info "========================================="  
+    echo_info "    Aztec 节点安装脚本"  
+    echo_info "========================================="  
+    echo ""  
+      
+    # 检查是否 root  
+    if [ "$EUID" -ne 0 ]; then   
+        echo_error "请使用 root 用户运行此脚本"  
+        exit 1  
+    fi  
+      
+    # 安装 screen  
+    if ! command -v screen &> /dev/null; then  
+        echo_info "安装 screen..."  
+        apt-get update -qq && apt-get install -y screen -qq  
+        echo_info "screen 安装完成"  
+        echo ""  
+    fi  
+      
+    # 检查是否已有运行中的 screen 会话  
+    if screen -list | grep -q "$SCREEN_NAME"; then  
+        echo_warn "发现已有安装进程正在运行"  
+        echo ""  
+        echo "请选择操作："  
+        echo "  1) 重新连接到现有进程"  
+        echo "  2) 终止现有进程并重新开始"  
+        echo "  3) 退出"  
+        echo ""  
+        read -p "请输入选项 (1/2/3): " choice  
+          
+        case $choice in  
+            1)  
+                echo_info "重新连接到安装进程..."  
+                screen -r $SCREEN_NAME  
+                exit 0  
+                ;;  
+            2)  
+                echo_warn "终止现有进程..."  
+                screen -S $SCREEN_NAME -X quit  
+                sleep 2  
+                ;;  
+            3)  
+                echo_info "退出"  
+                exit 0  
+                ;;  
+            *)  
+                echo_error "无效选项"  
+                exit 1  
+                ;;  
+        esac  
+    fi  
+      
+    # 显示提示信息  
+    echo_info "========================================="  
+    echo_info "即将在 screen 会话中启动安装"  
+    echo_info "========================================="  
+    echo ""  
+    echo_info "Screen 使用说明："  
+    echo "  • 断开连接（脚本继续运行）: Ctrl+A 然后按 D"  
+    echo "  • 重新连接: screen -r $SCREEN_NAME"  
+    echo "  • 查看所有会话: screen -ls"  
+    echo ""  
+    echo_warn "注意："  
+    echo "  • 脚本运行过程中需要输入助记词，请提前准备！"  
+    echo "  • 安装过程约 10-15 分钟"  
+    echo "  • 日志将保存到: /root/install_aztec.log"  
+    echo ""  
+      
+    read -p "按 Enter 键开始安装..."   
+    echo ""  
+      
+    # 在 screen 中重新运行自己  
+    echo_info "创建 screen 会话: $SCREEN_NAME"  
+    sleep 1  
+    screen -S $$SCREEN_NAME -L -Logfile /root/install_aztec.log bash "$$0" --in-screen  
+      
+    # screen 退出后的提示  
+    echo ""  
+    echo_info "========================================="  
+    echo_info "安装脚本已在 screen 中运行"  
+    echo_info "========================================="  
+    echo ""  
+    echo_info "如需重新连接，使用命令："  
+    echo "  screen -r $SCREEN_NAME"  
+    echo ""  
+    exit 0  
+fi  
+  
+# ============================================  
+# 以下是在 Screen 中执行的主安装流程  
+# ============================================  
+  
+set -e  
+  
+echo_info "========================================="  
+echo_info "    Aztec 2.1.2 节点安装脚本"  
+echo_info "    (运行在 Screen 会话中)"  
+echo_info "========================================="  
+echo ""  
+  
 # 检查是否root  
 if [ "$EUID" -ne 0 ]; then   
     echo_error "请使用 root 用户运行此脚本"  
@@ -29,13 +136,19 @@ CONFIG_FILE="/root/aztec_start_command.txt"
 if [ ! -f "$CONFIG_FILE" ]; then  
     echo_error "未找到配置文件: $CONFIG_FILE"  
     echo_error "请确保配置文件存在后再运行脚本"  
+    echo ""  
+    echo "配置文件示例格式："  
+    echo "aztec start --node --archiver --sequencer \\"  
+    echo "--network testnet \\"  
+    echo "--l1-rpc-urls \"http://your-rpc-url\" \\"  
+    echo "--l1-consensus-host-urls \"http://your-consensus-url\" \\"  
+    echo "--sequencer.validatorPrivateKeys 0xyour-private-key \\"  
+    echo "--sequencer.coinbase 0xyour-address \\"  
+    echo "--p2p.p2pIp your-vps-ip"  
+    echo ""  
+    read -p "按任意键退出..."  
     exit 1  
 fi  
-  
-echo_info "========================================="  
-echo_info "    Aztec 2.1.2 节点自动安装脚本"  
-echo_info "========================================="  
-echo ""  
   
 # ============================================  
 # 步骤1: 清理环境  
@@ -43,14 +156,14 @@ echo ""
 echo_step "步骤1/13: 清理旧环境..."  
   
 echo_info "关闭监控脚本..."  
-pkill -f monitor_aztec_node.sh || true  
+pkill -f monitor_aztec_node.sh 2>/dev/null || true  
 sleep 2  
   
 echo_info "检查残留的监控进程..."  
 MONITOR_COUNT=$(ps aux | grep monitor_aztec_node.sh | grep -v grep | wc -l)  
 if [ $MONITOR_COUNT -gt 0 ]; then  
     echo_warn "发现 $MONITOR_COUNT 个残留进程，强制终止..."  
-    pkill -9 -f monitor_aztec_node.sh || true  
+    pkill -9 -f monitor_aztec_node.sh 2>/dev/null || true  
 else  
     echo_info "无残留进程"  
 fi  
@@ -93,10 +206,11 @@ echo ""
 echo_step "步骤3/13: 安装 Aztec 2.1.2..."  
   
 echo_info "下载并执行 Aztec 安装脚本..."  
-bash -i <(curl -s https://install.aztec.network)  
+bash -i <(curl -s https://install.aztec.network) 2>/dev/null || true  
   
 echo_info "加载环境变量..."  
-source $HOME/.bash_profile  
+[ -f "$$HOME/.bash_profile" ] && source "$$HOME/.bash_profile"  
+[ -f "$$HOME/.bashrc" ] && source "$$HOME/.bashrc"  
   
 echo_info "安装 Aztec 2.1.2..."  
 aztec-up latest  
@@ -105,20 +219,48 @@ echo_info "Aztec 安装完成"
 echo ""  
   
 # ============================================  
-# 步骤4: 安装 Cast (Foundry)  
+# 步骤4: 安装 Cast (Foundry) - 已修复  
 # ============================================  
 echo_step "步骤4/13: 安装 Cast (Foundry)..."  
   
 if ! command -v cast &> /dev/null; then  
     echo_info "Cast 未安装，开始安装..."  
+      
+    # 下载并执行 foundryup 安装脚本  
     curl -L https://foundry.paradigm.xyz | bash  
-    source /root/.bashrc  
-    foundryup  
+      
+    # 多次尝试加载环境变量  
+    [ -f "$$HOME/.bashrc" ] && source "$$HOME/.bashrc"  
+    [ -f "$$HOME/.bash_profile" ] && source "$$HOME/.bash_profile"  
+      
+    # 手动添加到 PATH  
+    if [ -d "$HOME/.foundry/bin" ]; then  
+        export PATH="$$HOME/.foundry/bin:$$PATH"  
+    fi  
+      
+    # 执行 foundryup  
+    if command -v foundryup &> /dev/null; then  
+        foundryup  
+    elif [ -f "$HOME/.foundry/bin/foundryup" ]; then  
+        $HOME/.foundry/bin/foundryup  
+    else  
+        echo_error "foundryup 安装失败，尝试手动安装..."  
+        mkdir -p $HOME/.foundry/bin  
+        curl -L https://foundry.paradigm.xyz | bash  
+        $HOME/.foundry/bin/foundryup  
+    fi  
+      
+    # 再次确保 PATH 正确  
+    export PATH="$$HOME/.foundry/bin:$$PATH"  
+      
     echo_info "Cast 安装完成"  
 else  
-    CAST_VERSION=$(cast --version | head -n 1)  
+    CAST_VERSION=$(cast --version 2>/dev/null | head -n 1)  
     echo_info "Cast 已安装: $CAST_VERSION"  
 fi  
+  
+# 确保 cast 可用  
+export PATH="$$HOME/.foundry/bin:$$PATH"  
 echo ""  
   
 # ============================================  
@@ -149,6 +291,8 @@ echo ""
 if [ -z "$$L1_RPC" ] || [ -z "$$L1_CONSENSUS" ] || [ -z "$$VALIDATOR_PRIVATE_KEY" ] || [ -z "$$COINBASE" ] || [ -z "$P2P_IP" ]; then  
     echo_error "配置文件解析失败，缺少必需参数"  
     echo_error "请检查 $CONFIG_FILE 文件格式是否正确"  
+    echo ""  
+    read -p "按任意键退出..."  
     exit 1  
 fi  
   
@@ -168,15 +312,16 @@ echo ""
   
 if [ -z "$MNEMONIC" ]; then  
     echo_error "助记词不能为空"  
+    read -p "按任意键退出..."  
     exit 1  
 fi  
   
 # 统计单词数量  
 WORD_COUNT=$$(echo "$$MNEMONIC" | wc -w)  
 if [ $WORD_COUNT -ne 12 ]; then  
-    echo_error "助记词应该是 12 个单词，当前输入了 $WORD_COUNT 个"  
+    echo_warn "助记词应该是 12 个单词，当前输入了 $WORD_COUNT 个"  
     read -p "是否继续？(y/n): " CONTINUE  
-    if [ "$CONTINUE" != "y" ]; then  
+    if [ "$$CONTINUE" != "y" ] && [ "$$CONTINUE" != "Y" ]; then  
         exit 1  
     fi  
 fi  
@@ -189,6 +334,7 @@ aztec validator-keys new \
 # 验证生成的文件  
 if [ ! -f ~/.aztec/keystore/key1.json ]; then  
     echo_error "Keystore 生成失败"  
+    read -p "按任意键退出..."  
     exit 1  
 fi  
   
@@ -197,7 +343,7 @@ echo_info "Keystore 已生成: ~/.aztec/keystore/key1.json"
 # 检查是否安装了 jq  
 if ! command -v jq &> /dev/null; then  
     echo_info "安装 jq 工具..."  
-    apt-get update && apt-get install -y jq  
+    apt-get update -qq && apt-get install -y jq -qq  
 fi  
   
 # 提取密钥信息  
@@ -217,6 +363,10 @@ echo ""
 echo_step "步骤7/13: 执行质押 (Approve)..."  
   
 echo_info "向合约地址发送 approve 交易..."  
+  
+# 确保 cast 命令可用  
+export PATH="$$HOME/.foundry/bin:$$PATH"  
+  
 cast send 0x139d2a7a0881e16332d7D1F8DB383A4507E1Ea7A \  
   "approve(address,uint256)" \  
   0xebd99ff0ff6677205509ae73f93d0ca52ac85d67 \  
@@ -490,11 +640,12 @@ echo ""
 # ============================================  
 echo ""  
 echo_info "========================================="  
-echo_info "✓ Aztec 节点安装完成！"  
+echo_info "✓✓✓ Aztec 节点安装完成！✓✓✓"  
 echo_info "========================================="  
 echo ""  
 echo_info "节点信息:"  
 echo "  Coinbase 地址   : $COINBASE"  
+echo "  ETH 地址        : $ETH_ADDRESS"  
 echo "  P2P IP         : $P2P_IP"  
 echo "  区块链端口      : 8080"  
 echo "  管理端口        : 8880"  
@@ -514,6 +665,15 @@ echo "  查看监控日志   : tail -f /root/aztec_monitor.log"
 echo "  查看监控进程   : tmux attach -t aztec_monitor"  
 echo "  退出监控界面   : Ctrl+B 然后按 D"  
 echo ""  
+echo_info "Screen 会话管理:"  
+echo "  断开此会话     : Ctrl+A 然后按 D"  
+echo "  重新连接       : screen -r $SCREEN_NAME"  
+echo "  查看所有会话   : screen -ls"  
+echo ""  
 echo_info "========================================="  
-echo_info "脚本执行完成！节点正在后台运行"  
+echo_info "安装完成！节点正在后台运行"  
 echo_info "========================================="  
+echo ""  
+echo_warn "按 Ctrl+A 然后按 D 断开 screen 会话（脚本继续运行）"  
+echo_warn "或按任意键退出..."  
+read -n 1  
