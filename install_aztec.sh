@@ -119,6 +119,9 @@ fi
   
 set -e  
   
+# 确保在 /root 目录下工作  
+cd /root  
+  
 echo_info "========================================="  
 echo_info "    Aztec 2.1.2 节点安装脚本"  
 echo_info "    (运行在 Screen 会话中)"  
@@ -174,6 +177,7 @@ tmux kill-server 2>/dev/null || true
 echo_info "停止并删除旧的 Docker 容器..."  
 if [ -d "/root/.aztec" ]; then  
     cd /root/.aztec 2>/dev/null && docker compose down 2>/dev/null || true  
+    cd /root  
 fi  
 docker rm -f aztec-sequencer 2>/dev/null || true  
   
@@ -206,6 +210,7 @@ echo ""
 echo_step "步骤3/13: 安装 Aztec 2.1.2..."  
   
 echo_info "下载并执行 Aztec 安装脚本..."  
+cd /root  
 bash -i <(curl -s https://install.aztec.network) 2>/dev/null || true  
   
 echo_info "加载环境变量..."  
@@ -219,48 +224,65 @@ echo_info "Aztec 安装完成"
 echo ""  
   
 # ============================================  
-# 步骤4: 安装 Cast (Foundry) - 已修复  
+# 步骤4: 安装 Cast (Foundry) - 完全修复版  
 # ============================================  
 echo_step "步骤4/13: 安装 Cast (Foundry)..."  
+  
+# 定义 Foundry 路径  
+FOUNDRY_DIR="$HOME/.foundry"  
+FOUNDRY_BIN_DIR="$FOUNDRY_DIR/bin"  
   
 if ! command -v cast &> /dev/null; then  
     echo_info "Cast 未安装，开始安装..."  
       
+    # 确保在正确的目录  
+    cd /root  
+      
     # 下载并执行 foundryup 安装脚本  
-    curl -L https://foundry.paradigm.xyz | bash  
+    echo_info "下载 Foundry 安装器..."  
+    curl -L https://foundry.paradigm.xyz | bash 2>/dev/null || true  
       
-    # 多次尝试加载环境变量  
-    [ -f "$$HOME/.bashrc" ] && source "$$HOME/.bashrc"  
-    [ -f "$$HOME/.bash_profile" ] && source "$$HOME/.bash_profile"  
+    # 确保目录存在  
+    mkdir -p "$FOUNDRY_BIN_DIR"  
       
-    # 手动添加到 PATH  
-    if [ -d "$HOME/.foundry/bin" ]; then  
-        export PATH="$$HOME/.foundry/bin:$$PATH"  
-    fi  
-      
-    # 执行 foundryup  
-    if command -v foundryup &> /dev/null; then  
-        foundryup  
-    elif [ -f "$HOME/.foundry/bin/foundryup" ]; then  
-        $HOME/.foundry/bin/foundryup  
+    # 直接使用完整路径执行 foundryup  
+    if [ -f "$FOUNDRY_BIN_DIR/foundryup" ]; then  
+        echo_info "执行 foundryup..."  
+        "$FOUNDRY_BIN_DIR/foundryup"  
     else  
-        echo_error "foundryup 安装失败，尝试手动安装..."  
-        mkdir -p $HOME/.foundry/bin  
-        curl -L https://foundry.paradigm.xyz | bash  
-        $HOME/.foundry/bin/foundryup  
+        echo_error "foundryup 未安装到预期位置，尝试查找..."  
+          
+        # 尝试在其他可能的位置查找  
+        if [ -f "/usr/local/bin/foundryup" ]; then  
+            /usr/local/bin/foundryup  
+        elif [ -f "$HOME/.local/bin/foundryup" ]; then  
+            $HOME/.local/bin/foundryup  
+        else  
+            # 最后一次尝试：重新下载到指定位置  
+            echo_info "手动下载 foundryup..."  
+            curl -L https://raw.githubusercontent.com/foundry-rs/foundry/master/foundryup/foundryup -o "$FOUNDRY_BIN_DIR/foundryup"  
+            chmod +x "$FOUNDRY_BIN_DIR/foundryup"  
+            "$FOUNDRY_BIN_DIR/foundryup"  
+        fi  
     fi  
       
-    # 再次确保 PATH 正确  
-    export PATH="$$HOME/.foundry/bin:$$PATH"  
+    # 添加到 PATH（当前会话立即生效）  
+    export PATH="$$FOUNDRY_BIN_DIR:$$PATH"  
       
-    echo_info "Cast 安装完成"  
+    # 验证安装  
+    if command -v cast &> /dev/null; then  
+        CAST_VERSION=$(cast --version 2>/dev/null | head -n 1)  
+        echo_info "Cast 安装成功: $CAST_VERSION"  
+    else  
+        echo_error "Cast 安装可能失败，但继续执行..."  
+    fi  
 else  
     CAST_VERSION=$(cast --version 2>/dev/null | head -n 1)  
     echo_info "Cast 已安装: $CAST_VERSION"  
 fi  
   
-# 确保 cast 可用  
-export PATH="$$HOME/.foundry/bin:$$PATH"  
+# 确保后续步骤可以使用 cast  
+export PATH="$$FOUNDRY_BIN_DIR:$$PATH"  
 echo ""  
   
 # ============================================  
@@ -365,9 +387,17 @@ echo_step "步骤7/13: 执行质押 (Approve)..."
 echo_info "向合约地址发送 approve 交易..."  
   
 # 确保 cast 命令可用  
-export PATH="$$HOME/.foundry/bin:$$PATH"  
+export PATH="$$FOUNDRY_BIN_DIR:$$PATH"  
   
-cast send 0x139d2a7a0881e16332d7D1F8DB383A4507E1Ea7A \  
+# 检查 cast 是否真的可用  
+if ! command -v cast &> /dev/null; then  
+    echo_error "cast 命令不可用，尝试使用完整路径..."  
+    CAST_CMD="$FOUNDRY_BIN_DIR/cast"  
+else  
+    CAST_CMD="cast"  
+fi  
+  
+$CAST_CMD send 0x139d2a7a0881e16332d7D1F8DB383A4507E1Ea7A \  
   "approve(address,uint256)" \  
   0xebd99ff0ff6677205509ae73f93d0ca52ac85d67 \  
   200000ether \  
