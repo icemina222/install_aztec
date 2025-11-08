@@ -275,91 +275,103 @@ echo ""
 # ============================================  
 echo_info "步骤7: 执行质押 (Approve)..."  
   
-echo_info "向合约地址发送 approve 交易..."  
-echo_info "使用 RPC: $L1_RPC"  
+echo ""  
+echo_warn "质押操作只能执行一次，重复执行会失败"  
+read -p "是否执行质押？(y/n，默认 y): " DO_APPROVE  
+DO_APPROVE=${DO_APPROVE:-y}  
   
-# 确保 cast 命令可用  
-export PATH="$FOUNDRY_BIN_DIR:$PATH"  
-  
-# 检查 cast 是否可用  
-if command -v cast &> /dev/null; then  
-    CAST_CMD="cast"  
+if [ "$DO_APPROVE" = "y" ] || [ "$DO_APPROVE" = "Y" ]; then  
+    echo_info "向合约地址发送 approve 交易..."  
+    echo_info "使用 RPC: $L1_RPC"  
+      
+    export PATH="$FOUNDRY_BIN_DIR:$PATH"  
+      
+    if command -v cast &> /dev/null; then  
+        CAST_CMD="cast"  
+    else  
+        CAST_CMD="$FOUNDRY_BIN_DIR/cast"  
+    fi  
+      
+    if [ -z "$L1_RPC" ] || [ -z "$VALIDATOR_PRIVATE_KEY" ]; then  
+        echo_error "参数缺失"  
+        exit 1  
+    fi  
+      
+    echo_info "执行 cast send..."  
+    $CAST_CMD send 0x139d2a7a0881e16332d7D1F8DB383A4507E1Ea7A "approve(address,uint256)" 0xebd99ff0ff6677205509ae73f93d0ca52ac85d67 200000ether --private-key "$VALIDATOR_PRIVATE_KEY" --rpc-url "$L1_RPC"  
+      
+    if [ $? -eq 0 ]; then  
+        echo_info "质押完成"  
+    else  
+        echo_error "质押失败"  
+        read -p "是否继续？(y/n): " CONTINUE  
+        if [ "$CONTINUE" != "y" ] && [ "$CONTINUE" != "Y" ]; then  
+            exit 1  
+        fi  
+    fi  
 else  
-    CAST_CMD="$FOUNDRY_BIN_DIR/cast"  
-fi  
-  
-# 验证必需参数  
-if [ -z "$L1_RPC" ]; then  
-    echo_error "L1_RPC 为空，无法执行质押"  
-    exit 1  
-fi  
-  
-if [ -z "$VALIDATOR_PRIVATE_KEY" ]; then  
-    echo_error "VALIDATOR_PRIVATE_KEY 为空，无法执行质押"  
-    exit 1  
-fi  
-  
-# 执行质押（单行命令，避免参数丢失）  
-echo_info "执行 cast send..."  
-$CAST_CMD send 0x139d2a7a0881e16332d7D1F8DB383A4507E1Ea7A "approve(address,uint256)" 0xebd99ff0ff6677205509ae73f93d0ca52ac85d67 200000ether --private-key "$VALIDATOR_PRIVATE_KEY" --rpc-url "$L1_RPC"  
-  
-if [ $? -eq 0 ]; then  
-    echo_info "质押完成"  
-else  
-    echo_error "质押失败"  
-    exit 1  
+    echo_warn "跳过质押步骤"  
 fi  
   
 echo ""  
 
+
   
+# ============================================  
 # ============================================  
 # 步骤8: 注册验证者  
 # ============================================  
 echo_info "步骤8: 注册验证者..."  
   
-# 重新从 keystore 提取最新的 BLS 密钥（防止使用旧值）  
-if [ -f ~/.aztec/keystore/key1.json ]; then  
-    BLS_SECRET_KEY=$(cat ~/.aztec/keystore/key1.json | jq -r '.validators[0].attester.bls')  
-    echo_info "重新提取 BLS 密钥: ${BLS_SECRET_KEY:0:10}..."  
+echo ""  
+echo_warn "注册操作只能执行一次，重复执行会失败"  
+read -p "是否执行注册？(y/n，默认 y): " DO_REGISTER  
+DO_REGISTER=${DO_REGISTER:-y}  
+  
+if [ "$DO_REGISTER" = "y" ] || [ "$DO_REGISTER" = "Y" ]; then  
+    # 重新从 keystore 提取最新的 BLS 密钥  
+    if [ -f ~/.aztec/keystore/key1.json ]; then  
+        BLS_SECRET_KEY=$(cat ~/.aztec/keystore/key1.json | jq -r '.validators[0].attester.bls')  
+        echo_info "BLS 密钥: ${BLS_SECRET_KEY:0:10}..."  
+    else  
+        echo_error "找不到 keystore 文件"  
+        exit 1  
+    fi  
+      
+    echo_info "向 Aztec 网络注册验证者..."  
+    echo_info "使用 RPC: $L1_RPC"  
+    echo_info "Attester: $COINBASE"  
+      
+    if [ -n "$AZTEC_BIN" ] && [ -f "$AZTEC_BIN" ]; then  
+        AZTEC_CMD="$AZTEC_BIN"  
+    elif command -v aztec &> /dev/null; then  
+        AZTEC_CMD="aztec"  
+    else  
+        AZTEC_CMD=$(find $HOME -name "aztec" -type f -executable 2>/dev/null | grep -v node_modules | head -1)  
+    fi  
+      
+    if [ -z "$AZTEC_CMD" ]; then  
+        echo_error "无法找到 aztec 命令"  
+        exit 1  
+    fi  
+      
+    $AZTEC_CMD add-l1-validator --l1-rpc-urls "$L1_RPC" --network testnet --private-key "$VALIDATOR_PRIVATE_KEY" --attester "$COINBASE" --withdrawer "$COINBASE" --bls-secret-key "$BLS_SECRET_KEY" --rollup 0xebd99ff0ff6677205509ae73f93d0ca52ac85d67  
+      
+    if [ $? -eq 0 ]; then  
+        echo_info "验证者注册完成"  
+    else  
+        echo_error "验证者注册失败"  
+        read -p "是否继续？(y/n): " CONTINUE  
+        if [ "$CONTINUE" != "y" ] && [ "$CONTINUE" != "Y" ]; then  
+            exit 1  
+        fi  
+    fi  
 else  
-    echo_error "找不到 keystore 文件"  
-    exit 1  
-fi  
-  
-echo_info "向 Aztec 网络注册验证者..."  
-echo_info "使用 RPC: $L1_RPC"  
-echo_info "Attester: $COINBASE"  
-echo_info "Withdrawer: $COINBASE"  
-echo_info "BLS Key: ${BLS_SECRET_KEY:0:10}..."  
-  
-# 使用步骤3找到的 aztec 命令  
-if [ -n "$AZTEC_BIN" ] && [ -f "$AZTEC_BIN" ]; then  
-    AZTEC_CMD="$AZTEC_BIN"  
-elif command -v aztec &> /dev/null; then  
-    AZTEC_CMD="aztec"  
-else  
-    AZTEC_CMD=$(find $HOME -name "aztec" -type f -executable 2>/dev/null | grep -v node_modules | head -1)  
-fi  
-  
-if [ -z "$AZTEC_CMD" ]; then  
-    echo_error "无法找到 aztec 命令"  
-    exit 1  
-fi  
-  
-echo_info "使用 aztec 命令: $AZTEC_CMD"  
-  
-# 执行注册  
-$AZTEC_CMD add-l1-validator --l1-rpc-urls "$L1_RPC" --network testnet --private-key "$VALIDATOR_PRIVATE_KEY" --attester "$COINBASE" --withdrawer "$COINBASE" --bls-secret-key "$BLS_SECRET_KEY" --rollup 0xebd99ff0ff6677205509ae73f93d0ca52ac85d67  
-  
-if [ $? -eq 0 ]; then  
-    echo_info "验证者注册完成"  
-else  
-    echo_error "验证者注册失败"  
-    exit 1  
+    echo_warn "跳过注册步骤"  
 fi  
   
 echo ""  
+
 
 # ============================================  
 # 步骤9: 生成 .env 文件  
@@ -368,7 +380,7 @@ echo_info "步骤9: 生成 .env 文件..."
   
 mkdir -p /root/.aztec/data  
   
-cat > /root/.aztec/.env << EOF  
+cat > /root/.aztec/.env << 'ENVEOF'  
 DATA_DIRECTORY=./data  
 KEY_STORE_DIRECTORY=./keystore  
 LOG_LEVEL=info  
@@ -378,10 +390,12 @@ P2P_IP=$P2P_IP
 P2P_PORT=40400  
 AZTEC_PORT=8080  
 AZTEC_ADMIN_PORT=8880  
-EOF  
+ENVEOF  
   
 chmod 600 /root/.aztec/.env  
-echo_info ".env 文件已创建"  
+echo_info ".env 文件已创建: /root/.aztec/.env"  
+echo ""  
+
   
 # ============================================  
 # 步骤10: 生成 docker-compose.yml  
