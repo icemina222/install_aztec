@@ -44,17 +44,48 @@ if ! command -v docker &> /dev/null; then
 fi  
 echo "Docker 已就绪"  
   
-echo ""  
 echo "[3/13] 安装 Aztec..."  
 bash -i <(curl -s https://install.aztec.network) 2>/dev/null || true  
-if [ -f "$HOME/.bashrc" ]; then  
-    source "$HOME/.bashrc"  
-fi  
-if [ -f "$HOME/.bash_profile" ]; then  
-    source "$HOME/.bash_profile"  
-fi  
+  
+# 加载环境变量（多次尝试）  
+for rc_file in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile"; do  
+    if [ -f "$rc_file" ]; then  
+        source "$rc_file"  
+    fi  
+done  
+  
+# 执行 aztec-up  
 aztec-up latest  
-echo "Aztec 已安装"  
+  
+# 再次加载环境变量  
+for rc_file in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile"; do  
+    if [ -f "$rc_file" ]; then  
+        source "$rc_file"  
+    fi  
+done  
+  
+# 验证 aztec 命令是否可用  
+if ! command -v aztec &> /dev/null; then  
+    echo "警告: aztec 命令未找到，尝试手动添加到 PATH..."  
+      
+    # 查找 aztec 安装位置  
+    AZTEC_PATH=$(find $HOME/.aztec $HOME/.nvm $HOME -name "aztec" -type f 2>/dev/null | head -1)  
+    if [ -n "$AZTEC_PATH" ]; then  
+        AZTEC_DIR=$(dirname "$AZTEC_PATH")  
+        export PATH="$AZTEC_DIR:$PATH"  
+        echo "已添加: $AZTEC_DIR"  
+    fi  
+fi  
+  
+# 最终验证  
+if command -v aztec &> /dev/null; then  
+    echo "Aztec 已安装: $(which aztec)"  
+else  
+    echo "错误: Aztec 安装失败，aztec 命令不可用"  
+    echo "请手动检查安装"  
+    exit 1  
+fi  
+
   
 echo ""  
 echo "[4/13] 安装 Cast (Foundry)..."  
