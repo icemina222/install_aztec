@@ -71,22 +71,22 @@ if ! command -v cast &> /dev/null; then
       
     "$FOUNDRY_BIN/foundryup"  
 fi  
-export PATH="$$FOUNDRY_BIN:$$PATH"  
+export PATH="$FOUNDRY_BIN:$PATH"  
 echo "Cast 已安装"  
   
 echo ""  
 echo "[5/13] 解析配置文件..."  
-L1_RPC=$$(grep -oP '(?<=--l1-rpc-urls ")[^"]*' "$$CONFIG_FILE" 2>/dev/null || grep -oP '(?<=--l1-rpc-urls )\S+' "$CONFIG_FILE")  
-L1_CONSENSUS=$$(grep -oP '(?<=--l1-consensus-host-urls ")[^"]*' "$$CONFIG_FILE" 2>/dev/null || grep -oP '(?<=--l1-consensus-host-urls )\S+' "$CONFIG_FILE")  
-VALIDATOR_KEY=$$(grep -oP '(?<=--sequencer.validatorPrivateKeys )[^\s\\]*' "$$CONFIG_FILE")  
-COINBASE=$$(grep -oP '(?<=--sequencer.coinbase )[^\s\\]*' "$$CONFIG_FILE")  
-P2P_IP=$$(grep -oP '(?<=--p2p.p2pIp )[^\s\\]*' "$$CONFIG_FILE")  
+L1_RPC=$(grep -oP '(?<=--l1-rpc-urls ")[^"]*' "$CONFIG_FILE" 2>/dev/null || grep -oP '(?<=--l1-rpc-urls )\S+' "$CONFIG_FILE")  
+L1_CONSENSUS=$(grep -oP '(?<=--l1-consensus-host-urls ")[^"]*' "$CONFIG_FILE" 2>/dev/null || grep -oP '(?<=--l1-consensus-host-urls )\S+' "$CONFIG_FILE")  
+VALIDATOR_KEY=$(grep -oP '(?<=--sequencer.validatorPrivateKeys )[^\s\\]*' "$CONFIG_FILE")  
+COINBASE=$(grep -oP '(?<=--sequencer.coinbase )[^\s\\]*' "$CONFIG_FILE")  
+P2P_IP=$(grep -oP '(?<=--p2p.p2pIp )[^\s\\]*' "$CONFIG_FILE")  
   
 echo "  L1 RPC: $L1_RPC"  
 echo "  Coinbase: $COINBASE"  
 echo "  P2P IP: $P2P_IP"  
   
-if [ -z "$$L1_RPC" ] || [ -z "$$VALIDATOR_KEY" ]; then  
+if [ -z "$L1_RPC" ] || [ -z "$VALIDATOR_KEY" ]; then  
     echo "错误: 配置解析失败"  
     exit 1  
 fi  
@@ -123,7 +123,7 @@ echo "  BLS 密钥: ${BLS_KEY:0:10}..."
   
 echo ""  
 echo "[7/13] 执行质押..."  
-export PATH="$$FOUNDRY_BIN:$$PATH"  
+export PATH="$FOUNDRY_BIN:$PATH"  
   
 if command -v cast &> /dev/null; then  
     CAST_CMD="cast"  
@@ -131,12 +131,12 @@ else
     CAST_CMD="$FOUNDRY_BIN/cast"  
 fi  
   
-$$CAST_CMD send 0x139d2a7a0881e16332d7D1F8DB383A4507E1Ea7A "approve(address,uint256)" 0xebd99ff0ff6677205509ae73f93d0ca52ac85d67 200000ether --private-key "$$VALIDATOR_KEY" --rpc-url "$L1_RPC"  
+$CAST_CMD send 0x139d2a7a0881e16332d7D1F8DB383A4507E1Ea7A "approve(address,uint256)" 0xebd99ff0ff6677205509ae73f93d0ca52ac85d67 200000ether --private-key "$VALIDATOR_KEY" --rpc-url "$L1_RPC"  
 echo "质押完成"  
   
 echo ""  
 echo "[8/13] 注册验证者..."  
-aztec add-l1-validator --l1-rpc-urls "$$L1_RPC" --network testnet --private-key "$$VALIDATOR_KEY" --attester "$$COINBASE" --withdrawer "$$COINBASE" --bls-secret-key "$BLS_KEY" --rollup 0xebd99ff0ff6677205509ae73f93d0ca52ac85d67  
+aztec add-l1-validator --l1-rpc-urls "$L1_RPC" --network testnet --private-key "$VALIDATOR_KEY" --attester "$COINBASE" --withdrawer "$COINBASE" --bls-secret-key "$BLS_KEY" --rollup 0xebd99ff0ff6677205509ae73f93d0ca52ac85d67  
 echo "注册完成"  
   
 echo ""  
@@ -166,10 +166,10 @@ services:
     image: "aztecprotocol/aztec:2.1.2"  
     container_name: "aztec-sequencer"  
     ports:  
-      - $${AZTEC_PORT}:$${AZTEC_PORT}  
-      - $${AZTEC_ADMIN_PORT}:$${AZTEC_ADMIN_PORT}  
-      - $${P2P_PORT}:$${P2P_PORT}  
-      - $${P2P_PORT}:$${P2P_PORT}/udp  
+      - ${AZTEC_PORT}:${AZTEC_PORT}  
+      - ${AZTEC_ADMIN_PORT}:${AZTEC_ADMIN_PORT}  
+      - ${P2P_PORT}:${P2P_PORT}  
+      - ${P2P_PORT}:${P2P_PORT}/udp  
     volumes:  
       - ${DATA_DIRECTORY}:/var/lib/data  
       - ${KEY_STORE_DIRECTORY}:/var/lib/keystore  
@@ -207,7 +207,7 @@ for i in 1 2 3; do
     echo "第 $i 次检查..."  
     RESULT=$(curl -s -X POST -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","method":"node_getL2Tips","params":[],"id":67}' http://localhost:8080 | jq -r '.result.proven.number' 2>/dev/null || echo "")  
       
-    if echo "$$RESULT" | grep -qE '^[0-9]+$$'; then  
+    if echo "$RESULT" | grep -qE '^[0-9]+$'; then  
         echo "✓ 节点运行正常！区块高度: $RESULT"  
         break  
     else  
@@ -229,7 +229,7 @@ FAIL_THRESHOLD=3
 FAIL_COUNT=0  
   
 log() {  
-    echo "[$$(date -u '+%Y-%m-%d %H:%M:%S UTC')] $$1" | tee -a "$LOG_FILE"  
+    echo "[$(date -u '+%Y-%m-%d %H:%M:%S UTC')] $1" | tee -a "$LOG_FILE"  
 }  
   
 wait_for_half_hour() {  
@@ -237,7 +237,7 @@ wait_for_half_hour() {
     CURRENT_SECOND=$(date -u +%S)  
     MINUTE_MOD=$((CURRENT_MINUTE % 30))  
       
-    if [ $$MINUTE_MOD -eq 0 ] && [ $$CURRENT_SECOND -eq 0 ]; then  
+    if [ $MINUTE_MOD -eq 0 ] && [ $CURRENT_SECOND -eq 0 ]; then  
         WAIT_SECONDS=0  
     else  
         WAIT_MINUTES=$((30 - MINUTE_MOD - 1))  
@@ -250,8 +250,8 @@ wait_for_half_hour() {
     fi  
       
     if [ $WAIT_SECONDS -gt 0 ]; then  
-        NEXT_TIME=$$(date -u -d "+$${WAIT_SECONDS} seconds" '+%H:%M:%S')  
-        log "等待到 $${NEXT_TIME} UTC 开始监控 ($${WAIT_SECONDS}秒)"  
+        NEXT_TIME=$(date -u -d "+${WAIT_SECONDS} seconds" '+%H:%M:%S')  
+        log "等待到 ${NEXT_TIME} UTC 开始监控 (${WAIT_SECONDS}秒)"  
         sleep $WAIT_SECONDS  
     fi  
 }  
@@ -259,7 +259,7 @@ wait_for_half_hour() {
 check_node() {  
     RESULT=$(curl -s -X POST -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","method":"node_getL2Tips","params":[],"id":67}' http://localhost:8080 | jq -r '.result.proven.number' 2>/dev/null || echo "")  
       
-    if echo "$$RESULT" | grep -qE '^[0-9]+$$'; then  
+    if echo "$RESULT" | grep -qE '^[0-9]+$'; then  
         return 0  
     else  
         return 1  
@@ -281,7 +281,7 @@ restart_node() {
 }  
   
 log "==================== 监控脚本启动 ===================="  
-log "配置: 每$${CHECK_INTERVAL}秒检测一次，连续$${FAIL_THRESHOLD}次失败后重启"  
+log "配置: 每${CHECK_INTERVAL}秒检测一次，连续${FAIL_THRESHOLD}次失败后重启"  
   
 wait_for_half_hour  
   
@@ -299,9 +299,9 @@ while true; do
         FAIL_COUNT=0  
     else  
         FAIL_COUNT=$((FAIL_COUNT + 1))  
-        log "✗ 节点检测失败 ($$FAIL_COUNT/$$FAIL_THRESHOLD)"  
+        log "✗ 节点检测失败 ($FAIL_COUNT/$FAIL_THRESHOLD)"  
           
-        if [ $$FAIL_COUNT -ge $$FAIL_THRESHOLD ]; then  
+        if [ $FAIL_COUNT -ge $FAIL_THRESHOLD ]; then  
             log "⚠ 连续失败 ${FAIL_COUNT} 次，触发重启..."  
             restart_node  
             FAIL_COUNT=0  
