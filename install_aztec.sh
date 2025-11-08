@@ -158,52 +158,91 @@ echo_info "Aztec 安装完成"
 
   
 # ============================================  
-# 步骤4: 安装 Cast (Foundry)  
+# 步骤4: 安装 Cast (Foundry) - 终极版本
 # ============================================  
 echo_info "步骤4: 安装 Cast..."  
   
-if ! command -v cast &> /dev/null; then  
-    echo_info "下载并安装 Foundry..."
-    curl -L https://foundry.paradigm.xyz | bash  
+FOUNDRY_DIR="$HOME/.foundry"
+FOUNDRY_BIN_DIR="$FOUNDRY_DIR/bin"
+
+if ! [ -f "$FOUNDRY_BIN_DIR/cast" ]; then  
+    echo_info "开始安装 Foundry..."
     
-    # 添加 Foundry 到当前环境
-    export PATH="$HOME/.foundry/bin:$PATH"
-    
-    # 重新加载所有环境文件
-    for rc_file in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile"; do  
-        if [ -f "$rc_file" ]; then  
-            source "$rc_file" 2>/dev/null || true
-        fi  
-    done
-    
-    # 验证 foundryup 是否可用
-    if command -v foundryup &> /dev/null; then
-        echo_info "执行 foundryup 安装..."
-        foundryup
-    elif [ -f "$HOME/.foundry/bin/foundryup" ]; then
-        echo_info "使用绝对路径执行 foundryup..."
-        $HOME/.foundry/bin/foundryup
-    else
-        echo_warn "foundryup 未找到，尝试直接查找..."
-        FOUNDRYUP=$(find $HOME -name "foundryup" -type f 2>/dev/null | head -1)
-        if [ -n "$FOUNDRYUP" ]; then
-            chmod +x "$FOUNDRYUP"
-            "$FOUNDRYUP"
-        else
-            echo_error "无法找到 foundryup，但将继续安装"
+    # 方法1: 尝试标准安装流程
+    echo_info "方法1: 使用官方安装脚本..."
+    if curl -L https://foundry.paradigm.xyz | bash; then
+        echo_info "foundryup 安装脚本执行成功"
+        
+        # 等待文件创建
+        sleep 2
+        
+        # 查找并执行 foundryup
+        if [ -f "$FOUNDRY_BIN_DIR/foundryup" ]; then
+            echo_info "执行 foundryup..."
+            export PATH="$FOUNDRY_BIN_DIR:$PATH"
+            bash "$FOUNDRY_BIN_DIR/foundryup" || {
+                echo_warn "foundryup 执行失败，尝试备用方案..."
+            }
         fi
     fi
     
-    # 再次验证 cast 是否安装成功
-    export PATH="$HOME/.foundry/bin:$PATH"
-    if command -v cast &> /dev/null; then
-        echo_info "Cast 安装完成"
+    # 等待安装
+    sleep 3
+    
+    # 方法2: 如果方法1失败，直接下载预编译二进制文件
+    if ! [ -f "$FOUNDRY_BIN_DIR/cast" ]; then
+        echo_info "方法2: 直接下载 Foundry 二进制文件..."
+        
+        mkdir -p "$FOUNDRY_BIN_DIR"
+        
+        # 检测系统架构
+        ARCH=$(uname -m)
+        if [ "$ARCH" = "x86_64" ]; then
+            FOUNDRY_ARCH="amd64"
+        elif [ "$ARCH" = "aarch64" ]; then
+            FOUNDRY_ARCH="arm64"
+        else
+            echo_error "不支持的架构: $ARCH"
+            exit 1
+        fi
+        
+        echo_info "下载 Foundry for Linux-${FOUNDRY_ARCH}..."
+        
+        # 下载最新版本的 foundry
+        FOUNDRY_RELEASE="https://github.com/foundry-rs/foundry/releases/latest/download/foundry_nightly_linux_${FOUNDRY_ARCH}.tar.gz"
+        
+        if curl -L "$FOUNDRY_RELEASE" -o /tmp/foundry.tar.gz; then
+            echo_info "解压 Foundry..."
+            tar -xzf /tmp/foundry.tar.gz -C "$FOUNDRY_BIN_DIR"
+            chmod +x "$FOUNDRY_BIN_DIR"/*
+            rm -f /tmp/foundry.tar.gz
+            echo_info "✓ Foundry 二进制文件安装完成"
+        else
+            echo_error "下载失败"
+            exit 1
+        fi
+    fi
+    
+    # 最终验证
+    export PATH="$FOUNDRY_BIN_DIR:$PATH"
+    
+    if [ -f "$FOUNDRY_BIN_DIR/cast" ]; then
+        echo_info "✓ Cast 安装成功"
+        "$FOUNDRY_BIN_DIR/cast" --version 2>/dev/null || echo "Cast 已就绪"
     else
-        echo_warn "Cast 可能未正确安装，将在后续步骤中尝试使用绝对路径"
+        echo_error "❌ Cast 安装失败"
+        echo_error "请手动安装 Foundry 后重试"
+        exit 1
     fi
 else  
-    echo_info "Cast 已安装，跳过..."  
-fi  
+    echo_info "Cast 已安装，跳过..."
+    export PATH="$FOUNDRY_BIN_DIR:$PATH"
+    "$FOUNDRY_BIN_DIR/cast" --version 2>/dev/null || true
+fi
+
+# 确保后续步骤可以使用
+export PATH="$FOUNDRY_BIN_DIR:$PATH"
+echo_info "Foundry 工具已就绪: $FOUNDRY_BIN_DIR"  
   
 # ============================================  
 # 步骤5: 解析配置文件  
