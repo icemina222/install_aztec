@@ -189,7 +189,7 @@ if [ -z "$L1_RPC" ] || [ -z "$L1_CONSENSUS" ] || [ -z "$VALIDATOR_PRIVATE_KEY" ]
 fi  
   
 # ============================================  
-# 步骤6: 生成 Keystore (需要助记词)  
+# 步骤6: 生成 Keystore  
 # ============================================  
 echo_info "步骤6: 生成 Keystore..."  
   
@@ -223,22 +223,16 @@ echo_info "生成 Keystore..."
 # 使用步骤3中找到的 aztec 命令  
 if [ -n "$AZTEC_BIN" ] && [ -f "$AZTEC_BIN" ]; then  
     echo_info "使用找到的 aztec: $AZTEC_BIN"  
-    $AZTEC_BIN validator-keys new \  
-      --fee-recipient 0x0000000000000000000000000000000000000000 \  
-      --mnemonic "$MNEMONIC"  
+    $AZTEC_BIN validator-keys new --fee-recipient 0x0000000000000000000000000000000000000000000000000000000000000000 --mnemonic "$MNEMONIC"  
 elif command -v aztec &> /dev/null; then  
     echo_info "使用 PATH 中的 aztec"  
-    aztec validator-keys new \  
-      --fee-recipient 0x0000000000000000000000000000000000000000 \  
-      --mnemonic "$MNEMONIC"  
+    aztec validator-keys new --fee-recipient 0x0000000000000000000000000000000000000000000000000000000000000000 --mnemonic "$MNEMONIC"  
 else  
     echo_warn "再次查找 aztec 命令..."  
     AZTEC_CMD=$(find $HOME -name "aztec" -type f -executable 2>/dev/null | grep -v node_modules | head -1)  
     if [ -n "$AZTEC_CMD" ]; then  
         echo_info "找到: $AZTEC_CMD"  
-        $AZTEC_CMD validator-keys new \  
-          --fee-recipient 0x0000000000000000000000000000000000000000 \  
-          --mnemonic "$MNEMONIC"  
+        $AZTEC_CMD validator-keys new --fee-recipient 0x0000000000000000000000000000000000000000000000000000000000000000 --mnemonic "$MNEMONIC"  
     else  
         echo_error "无法找到 aztec 命令"  
         echo_error "请检查安装是否成功"  
@@ -271,7 +265,7 @@ echo "  ETH 地址    : $ETH_ADDRESS"
 echo "  BLS 密钥    : ${BLS_SECRET_KEY:0:10}...${BLS_SECRET_KEY: -10}"  
 echo_info "===================================="  
 echo ""  
- 
+
   
 # 可选：验证 ETH 地址是否与配置文件中的 COINBASE 一致  
 # （如果助记词正确，应该会生成相同的地址）  
