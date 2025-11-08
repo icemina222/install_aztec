@@ -1,20 +1,26 @@
 #!/bin/bash  
 # ============================================  
 # Aztec 2.1.2 节点批量安装脚本  
-# 支持 Docker Compose 部署 + 自动监控 + Screen 会话  
+# 版本: v1.0.1  
+# 更新日期: 2025-01-08  
+# 支持: Docker Compose + 自动监控 + Screen 会话  
 # ============================================  
+  
+SCRIPT_VERSION="v1.0.1"  
   
 # 颜色输出  
 RED='\033[0;31m'  
 GREEN='\033[0;32m'  
 YELLOW='\033[1;33m'  
 BLUE='\033[0;34m'  
+CYAN='\033[0;36m'  
 NC='\033[0m'  
   
 echo_info() { echo -e "$${GREEN}[INFO]$${NC} $1"; }  
 echo_warn() { echo -e "$${YELLOW}[WARN]$${NC} $1"; }  
 echo_error() { echo -e "$${RED}[ERROR]$${NC} $1"; }  
 echo_step() { echo -e "$${BLUE}[STEP]$${NC} $1"; }  
+echo_version() { echo -e "$${CYAN}[VERSION]$${NC} $1"; }  
   
 SCREEN_NAME="aztec_install"  
 SCRIPT_PATH="/root/install_aztec.sh"  
@@ -25,9 +31,10 @@ SCRIPT_PATH="/root/install_aztec.sh"
 if [ -z "$STY" ]; then  
     # 不在 screen 中，需要创建 screen 会话  
       
-    echo_info "========================================="  
-    echo_info "    Aztec 节点安装脚本"  
-    echo_info "========================================="  
+    clear  
+    echo_version "========================================="  
+    echo_version "    Aztec 节点安装脚本 $SCRIPT_VERSION"  
+    echo_version "========================================="  
     echo ""  
       
     # 检查是否 root  
@@ -99,17 +106,29 @@ if [ -z "$STY" ]; then
     # 在 screen 中重新运行自己  
     echo_info "创建 screen 会话: $SCREEN_NAME"  
     sleep 1  
-    screen -S $$SCREEN_NAME -L -Logfile /root/install_aztec.log bash "$$0" --in-screen  
       
-    # screen 退出后的提示  
-    echo ""  
-    echo_info "========================================="  
-    echo_info "安装脚本已在 screen 中运行"  
-    echo_info "========================================="  
-    echo ""  
-    echo_info "如需重新连接，使用命令："  
-    echo "  screen -r $SCREEN_NAME"  
-    echo ""  
+    # 使用更可靠的方式启动 screen  
+    screen -dmS $$SCREEN_NAME bash -c "cd /root && bash '$$0' --in-screen 2>&1 | tee /root/install_aztec.log"  
+      
+    sleep 2  
+      
+    # 检查 screen 是否成功创建  
+    if screen -list | grep -q "$SCREEN_NAME"; then  
+        echo ""  
+        echo_info "========================================="  
+        echo_info "Screen 会话已成功创建"  
+        echo_info "========================================="  
+        echo ""  
+        echo_info "自动连接到 screen 会话..."  
+        sleep 1  
+        screen -r $SCREEN_NAME  
+    else  
+        echo_error "Screen 会话创建失败"  
+        echo ""  
+        echo "请查看日志: cat /root/install_aztec.log"  
+        exit 1  
+    fi  
+      
     exit 0  
 fi  
   
@@ -117,20 +136,24 @@ fi
 # 以下是在 Screen 中执行的主安装流程  
 # ============================================  
   
-set -e  
+# 不使用 set -e，改为手动检查关键步骤  
+# set -e  
   
 # 确保在 /root 目录下工作  
-cd /root  
+cd /root || exit 1  
   
-echo_info "========================================="  
-echo_info "    Aztec 2.1.2 节点安装脚本"  
-echo_info "    (运行在 Screen 会话中)"  
-echo_info "========================================="  
+# 避免使用 clear 命令，可能在某些终端下有问题  
+echo ""  
+echo "========================================="  
+echo "  Aztec 2.1.2 节点安装脚本 $SCRIPT_VERSION"  
+echo "  (运行在 Screen 会话中)"  
+echo "========================================="  
 echo ""  
   
 # 检查是否root  
 if [ "$EUID" -ne 0 ]; then   
     echo_error "请使用 root 用户运行此脚本"  
+    read -p "按任意键退出..."  
     exit 1  
 fi  
   
@@ -195,6 +218,11 @@ echo_step "步骤2/13: 检查并安装 Docker..."
 if ! command -v docker &> /dev/null; then  
     echo_info "Docker 未安装，开始安装..."  
     curl -fsSL https://get.docker.com | sh  
+    if [ $? -ne 0 ]; then  
+        echo_error "Docker 安装失败"  
+        read -p "按任意键退出..."  
+        exit 1  
+    fi  
     systemctl enable docker  
     systemctl start docker  
     echo_info "Docker 安装完成"  
@@ -220,11 +248,17 @@ echo_info "加载环境变量..."
 echo_info "安装 Aztec 2.1.2..."  
 aztec-up latest  
   
+if ! command -v aztec &> /dev/null; then  
+    echo_error "Aztec 安装失败"  
+    read -p "按任意键退出..."  
+    exit 1  
+fi  
+  
 echo_info "Aztec 安装完成"  
 echo ""  
   
 # ============================================  
-# 步骤4: 安装 Cast (Foundry) - 完全修复版  
+# 步骤4: 安装 Cast (Foundry)  
 # ============================================  
 echo_step "步骤4/13: 安装 Cast (Foundry)..."  
   
@@ -250,7 +284,7 @@ if ! command -v cast &> /dev/null; then
         echo_info "执行 foundryup..."  
         "$FOUNDRY_BIN_DIR/foundryup"  
     else  
-        echo_error "foundryup 未安装到预期位置，尝试查找..."  
+        echo_warn "foundryup 未安装到预期位置，尝试其他方法..."  
           
         # 尝试在其他可能的位置查找  
         if [ -f "/usr/local/bin/foundryup" ]; then  
@@ -266,7 +300,7 @@ if ! command -v cast &> /dev/null; then
         fi  
     fi  
       
-    # 添加到 PATH（当前会话立即生效）  
+    # 添加到 PATH  
     export PATH="$$FOUNDRY_BIN_DIR:$$PATH"  
       
     # 验证安装  
@@ -274,7 +308,7 @@ if ! command -v cast &> /dev/null; then
         CAST_VERSION=$(cast --version 2>/dev/null | head -n 1)  
         echo_info "Cast 安装成功: $CAST_VERSION"  
     else  
-        echo_error "Cast 安装可能失败，但继续执行..."  
+        echo_warn "Cast 安装可能失败，将使用完整路径..."  
     fi  
 else  
     CAST_VERSION=$(cast --version 2>/dev/null | head -n 1)  
@@ -292,7 +326,7 @@ echo_step "步骤5/13: 解析配置文件..."
   
 echo_info "读取配置文件: $CONFIG_FILE"  
   
-# 提取参数（兼容带引号和不带引号的格式）  
+# 提取参数  
 L1_RPC=$$(grep -oP '(?<=--l1-rpc-urls ")[^"]*' "$$CONFIG_FILE" 2>/dev/null || grep -oP "(?<=--l1-rpc-urls )\S+" "$CONFIG_FILE")  
 L1_CONSENSUS=$$(grep -oP '(?<=--l1-consensus-host-urls ")[^"]*' "$$CONFIG_FILE" 2>/dev/null || grep -oP "(?<=--l1-consensus-host-urls )\S+" "$CONFIG_FILE")  
 VALIDATOR_PRIVATE_KEY=$$(grep -oP '(?<=--sequencer.validatorPrivateKeys )[^\s\\]*' "$$CONFIG_FILE")  
@@ -362,7 +396,7 @@ fi
   
 echo_info "Keystore 已生成: ~/.aztec/keystore/key1.json"  
   
-# 检查是否安装了 jq  
+# 安装 jq  
 if ! command -v jq &> /dev/null; then  
     echo_info "安装 jq 工具..."  
     apt-get update -qq && apt-get install -y jq -qq  
@@ -389,12 +423,11 @@ echo_info "向合约地址发送 approve 交易..."
 # 确保 cast 命令可用  
 export PATH="$$FOUNDRY_BIN_DIR:$$PATH"  
   
-# 检查 cast 是否真的可用  
-if ! command -v cast &> /dev/null; then  
-    echo_error "cast 命令不可用，尝试使用完整路径..."  
-    CAST_CMD="$FOUNDRY_BIN_DIR/cast"  
-else  
+# 检查 cast 是否可用  
+if command -v cast &> /dev/null; then  
     CAST_CMD="cast"  
+else  
+    CAST_CMD="$FOUNDRY_BIN_DIR/cast"  
 fi  
   
 $CAST_CMD send 0x139d2a7a0881e16332d7D1F8DB383A4507E1Ea7A \  
@@ -445,7 +478,7 @@ AZTEC_ADMIN_PORT=8880
 EOF  
   
 chmod 600 /root/.aztec/.env  
-echo_info ".env 文件已创建: /root/.aztec/.env"  
+echo_info ".env 文件已创建"  
 echo ""  
   
 # ============================================  
@@ -493,7 +526,7 @@ networks:
     name: aztec  
 EOF  
   
-echo_info "docker-compose.yml 已创建: /root/.aztec/docker-compose.yml"  
+echo_info "docker-compose.yml 已创建"  
 echo ""  
   
 # ============================================  
@@ -542,33 +575,25 @@ cat > /root/monitor_aztec_node.sh << 'MONITOR_EOF'
 #!/bin/bash  
   
 LOG_FILE="/root/aztec_monitor.log"  
-CHECK_INTERVAL=30        # 每30秒检查一次  
-FAIL_THRESHOLD=3         # 连续失败3次才重启  
-  
+CHECK_INTERVAL=30  
+FAIL_THRESHOLD=3  
 FAIL_COUNT=0  
   
 log() {  
     echo "[$$(date -u '+%Y-%m-%d %H:%M:%S UTC')] $$1" | tee -a "$LOG_FILE"  
 }  
   
-# 计算距离下一个整点或半点的秒数  
 wait_for_next_half_hour() {  
     CURRENT_MINUTE=$(date -u +%M)  
     CURRENT_SECOND=$(date -u +%S)  
-      
-    # 计算当前分钟数对30的余数  
     MINUTE_MOD=$((CURRENT_MINUTE % 30))  
       
-    # 计算需要等待的分钟数  
     if [ $$MINUTE_MOD -eq 0 ] && [ $$CURRENT_SECOND -eq 0 ]; then  
-        # 正好在整点或半点  
         WAIT_MINUTES=0  
         WAIT_SECONDS=0  
     else  
         WAIT_MINUTES=$((30 - MINUTE_MOD - 1))  
         WAIT_SECONDS=$((60 - CURRENT_SECOND))  
-          
-        # 如果秒数为60，需要调整  
         if [ $WAIT_SECONDS -eq 60 ]; then  
             WAIT_MINUTES=$((WAIT_MINUTES + 1))  
             WAIT_SECONDS=0  
@@ -591,9 +616,9 @@ check_node() {
       http://localhost:8080 | jq -r ".result.proven.number" 2>/dev/null || echo "")  
       
     if [[ "$$RESULT" =~ ^[0-9]+$$ ]]; then  
-        return 0  # 成功  
+        return 0  
     else  
-        return 1  # 失败  
+        return 1  
     fi  
 }  
   
@@ -610,11 +635,8 @@ restart_node() {
   
 log "==================== 监控脚本启动 ===================="  
 log "配置: 每$${CHECK_INTERVAL}秒检测一次，连续$${FAIL_THRESHOLD}次失败后重启"  
-log "监测时间点: UTC 时间每个整点和半点 (00:00, 00:30, 01:00, 01:30...)"  
   
-# 等待到下一个整点或半点  
 wait_for_next_half_hour  
-  
 log "========== 开始监控节点 =========="  
   
 while true; do  
@@ -638,7 +660,6 @@ while true; do
             restart_node  
             FAIL_COUNT=0  
               
-            # 重启后等待并再次检查  
             log "重启后等待60秒进行验证..."  
             sleep 60  
               
@@ -658,52 +679,35 @@ done
 MONITOR_EOF  
   
 chmod +x /root/monitor_aztec_node.sh  
-  
-# 在 tmux 中启动监控  
 tmux new-session -d -s aztec_monitor "bash /root/monitor_aztec_node.sh"  
   
-echo_info "监控脚本已启动（tmux 会话: aztec_monitor）"  
+echo_info "监控脚本已启动"  
 echo ""  
   
 # ============================================  
 # 完成  
 # ============================================  
 echo ""  
-echo_info "========================================="  
-echo_info "✓✓✓ Aztec 节点安装完成！✓✓✓"  
-echo_info "========================================="  
+echo "========================================="  
+echo "✓✓✓ Aztec 节点安装完成！✓✓✓"  
+echo "========================================="  
 echo ""  
-echo_info "节点信息:"  
-echo "  Coinbase 地址   : $COINBASE"  
-echo "  ETH 地址        : $ETH_ADDRESS"  
-echo "  P2P IP         : $P2P_IP"  
-echo "  区块链端口      : 8080"  
-echo "  管理端口        : 8880"  
-echo "  P2P 端口       : 40400"  
+echo "脚本版本: $SCRIPT_VERSION"  
 echo ""  
-echo_info "监控配置:"  
-echo "  监测对齐       : UTC 时间整点和半点"  
-echo "  检测频率       : 每 30 秒"  
-echo "  重启条件       : 连续 3 次失败 (90秒)"  
+echo "节点信息:"  
+echo "  Coinbase: $COINBASE"  
+echo "  ETH地址: $ETH_ADDRESS"  
+echo "  P2P IP: $P2P_IP"  
 echo ""  
-echo_info "常用命令:"  
-echo "  查看节点日志   : docker logs -f aztec-sequencer"  
-echo "  查看节点状态   : docker ps"  
-echo "  重启节点       : cd /root/.aztec && docker compose restart"  
-echo "  停止节点       : cd /root/.aztec && docker compose down"  
-echo "  查看监控日志   : tail -f /root/aztec_monitor.log"  
-echo "  查看监控进程   : tmux attach -t aztec_monitor"  
-echo "  退出监控界面   : Ctrl+B 然后按 D"  
+echo "常用命令:"  
+echo "  查看节点日志: docker logs -f aztec-sequencer"  
+echo "  查看监控日志: tail -f /root/aztec_monitor.log"  
+echo "  重启节点: cd /root/.aztec && docker compose restart"  
 echo ""  
-echo_info "Screen 会话管理:"  
-echo "  断开此会话     : Ctrl+A 然后按 D"  
-echo "  重新连接       : screen -r $SCREEN_NAME"  
-echo "  查看所有会话   : screen -ls"  
+echo "Screen 管理:"  
+echo "  断开会话: Ctrl+A 然后按 D"  
+echo "  重新连接: screen -r aztec_install"  
 echo ""  
-echo_info "========================================="  
-echo_info "安装完成！节点正在后台运行"  
-echo_info "========================================="  
+echo "========================================="  
 echo ""  
-echo_warn "按 Ctrl+A 然后按 D 断开 screen 会话（脚本继续运行）"  
-echo_warn "或按任意键退出..."  
-read -n 1  
+read -p "按任意键退出 screen..."  
