@@ -400,6 +400,8 @@ echo ""
 # ============================================  
 echo_info "步骤10: 生成 docker-compose.yml..."  
   
+echo_info "步骤10: 生成 docker-compose.yml..."  
+  
 cat > /root/.aztec/docker-compose.yml <<'DCEOF'
 services:  
   aztec-sequencer:  
