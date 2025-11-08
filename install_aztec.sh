@@ -37,7 +37,23 @@ if [ "$1" != "--in-screen" ]; then
     echo ""  
     read -p "按 Enter 开始..."   
       
+<<<<<<< HEAD
     SCRIPT_PATH="$$(realpath "$$0")"  
+=======
+    read -p "按 Enter 键开始安装..."   
+    echo ""  
+      
+    # 保存脚本路径（修复语法错误）  
+    SCRIPT_FULL_PATH="$(realpath "$0")"  
+  
+      
+    # 在 screen 中重新运行自己  
+    echo_info "创建 screen 会话: $SCREEN_NAME"  
+    sleep 1  
+      
+    # 使用更简单直接的方式  
+    screen -dmS $$SCREEN_NAME bash -c "exec bash '$$SCRIPT_FULL_PATH' --in-screen 2>&1 | tee /root/install_aztec.log"  
+>>>>>>> f0fdada46896148072abadd6d85aecd01206d9ea
       
     # 创建 screen 并传递 --in-screen 参数  
     screen -dmS $$SCREEN_NAME bash -c "bash '$$SCRIPT_PATH' --in-screen 2>&1 | tee /root/install_aztec.log"  
