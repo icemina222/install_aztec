@@ -163,10 +163,44 @@ echo_info "Aztec 安装完成"
 echo_info "步骤4: 安装 Cast..."  
   
 if ! command -v cast &> /dev/null; then  
+    echo_info "下载并安装 Foundry..."
     curl -L https://foundry.paradigm.xyz | bash  
-    source /root/.bashrc  
-    foundryup  
-    echo_info "Cast 安装完成"  
+    
+    # 添加 Foundry 到当前环境
+    export PATH="$HOME/.foundry/bin:$PATH"
+    
+    # 重新加载所有环境文件
+    for rc_file in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile"; do  
+        if [ -f "$rc_file" ]; then  
+            source "$rc_file" 2>/dev/null || true
+        fi  
+    done
+    
+    # 验证 foundryup 是否可用
+    if command -v foundryup &> /dev/null; then
+        echo_info "执行 foundryup 安装..."
+        foundryup
+    elif [ -f "$HOME/.foundry/bin/foundryup" ]; then
+        echo_info "使用绝对路径执行 foundryup..."
+        $HOME/.foundry/bin/foundryup
+    else
+        echo_warn "foundryup 未找到，尝试直接查找..."
+        FOUNDRYUP=$(find $HOME -name "foundryup" -type f 2>/dev/null | head -1)
+        if [ -n "$FOUNDRYUP" ]; then
+            chmod +x "$FOUNDRYUP"
+            "$FOUNDRYUP"
+        else
+            echo_error "无法找到 foundryup，但将继续安装"
+        fi
+    fi
+    
+    # 再次验证 cast 是否安装成功
+    export PATH="$HOME/.foundry/bin:$PATH"
+    if command -v cast &> /dev/null; then
+        echo_info "Cast 安装完成"
+    else
+        echo_warn "Cast 可能未正确安装，将在后续步骤中尝试使用绝对路径"
+    fi
 else  
     echo_info "Cast 已安装，跳过..."  
 fi  
@@ -287,13 +321,25 @@ if [ "$DO_APPROVE" = "y" ] || [ "$DO_APPROVE" = "Y" ]; then
     echo_info "向合约地址发送 approve 交易..."  
     echo_info "使用 RPC: $L1_RPC"  
       
-    export PATH="$FOUNDRY_BIN_DIR:$PATH"  
+    # 确保 Foundry 在 PATH 中
+    export PATH="$HOME/.foundry/bin:$PATH"
       
+    # 查找 cast 命令
+    CAST_CMD=""
     if command -v cast &> /dev/null; then  
-        CAST_CMD="cast"  
-    else  
-        CAST_CMD="$FOUNDRY_BIN_DIR/cast"  
-    fi  
+        CAST_CMD="cast"
+    elif [ -f "$HOME/.foundry/bin/cast" ]; then
+        CAST_CMD="$HOME/.foundry/bin/cast"
+    else
+        CAST_CMD=$(find $HOME -name "cast" -type f -executable 2>/dev/null | head -1)
+    fi
+    
+    if [ -z "$CAST_CMD" ]; then
+        echo_error "无法找到 cast 命令，请确保 Foundry 已正确安装"
+        exit 1
+    fi
+    
+    echo_info "使用 cast: $CAST_CMD"
       
     if [ -z "$L1_RPC" ] || [ -z "$VALIDATOR_PRIVATE_KEY" ]; then  
         echo_error "参数缺失"  
@@ -301,7 +347,12 @@ if [ "$DO_APPROVE" = "y" ] || [ "$DO_APPROVE" = "Y" ]; then
     fi  
       
     echo_info "执行 cast send..."  
-    $CAST_CMD send 0x139d2a7a0881e16332d7D1F8DB383A4507E1Ea7A "approve(address,uint256)" 0xebd99ff0ff6677205509ae73f93d0ca52ac85d67 200000ether --private-key "$VALIDATOR_PRIVATE_KEY" --rpc-url "$L1_RPC"  
+    $CAST_CMD send 0x139d2a7a0881e16332d7D1F8DB383A4507E1Ea7A \
+        "approve(address,uint256)" \
+        0xebd99ff0ff6677205509ae73f93d0ca52ac85d67 \
+        200000ether \
+        --private-key "$VALIDATOR_PRIVATE_KEY" \
+        --rpc-url "$L1_RPC"  
       
     if [ $? -eq 0 ]; then  
         echo_info "质押完成"  
