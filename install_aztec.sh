@@ -400,7 +400,7 @@ echo ""
 # ============================================  
 echo_info "步骤10: 生成 docker-compose.yml..."  
   
-cat > /root/.aztec/docker-compose.yml <<'DCEOF'  
+cat > /root/.aztec/docker-compose.yml <<'DCEOF'
 services:  
   aztec-sequencer:  
     image: "aztecprotocol/aztec:2.1.2"  
@@ -554,7 +554,7 @@ while true; do
     fi  
     sleep $CHECK_INTERVAL  
 done  
-MONEOF  
+MONEOF
   
 chmod +x /root/monitor_aztec_node.sh  
 tmux new-session -d -s aztec_monitor "bash /root/monitor_aztec_node.sh"  
