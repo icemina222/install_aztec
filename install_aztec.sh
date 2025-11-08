@@ -72,8 +72,61 @@ fi
 echo_info "步骤3: 安装 Aztec 2.1.2..."  
   
 bash -i <(curl -s https://install.aztec.network)  
-source $HOME/.bash_profile  
-aztec-up latest  
+  
+# 等待安装完成  
+sleep 3  
+  
+# 加载所有可能的环境文件  
+for rc_file in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile"; do  
+    if [ -f "$rc_file" ]; then  
+        source "$rc_file"  
+    fi  
+done  
+  
+# 手动添加常见的安装路径  
+export PATH="$HOME/.aztec/bin:$HOME/.local/bin:$PATH"  
+  
+# 执行 aztec-up，支持多种方式  
+if command -v aztec-up &> /dev/null; then  
+    echo_info "执行 aztec-up latest..."  
+    aztec-up latest  
+elif [ -f "$HOME/.aztec/bin/aztec-up" ]; then  
+    echo_info "使用完整路径执行 aztec-up..."  
+    $HOME/.aztec/bin/aztec-up latest  
+else  
+    echo_warn "找不到 aztec-up，尝试搜索..."  
+    AZTEC_UP=$(find $HOME -name "aztec-up" -type f 2>/dev/null | head -1)  
+    if [ -n "$AZTEC_UP" ]; then  
+        echo_info "找到: $AZTEC_UP"  
+        chmod +x "$AZTEC_UP"  
+        "$AZTEC_UP" latest  
+    else  
+        echo_error "无法找到 aztec-up，跳过更新"  
+    fi  
+fi  
+  
+# 再次加载环境  
+sleep 2  
+for rc_file in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile"; do  
+    if [ -f "$rc_file" ]; then  
+        source "$rc_file"  
+    fi  
+done  
+export PATH="$HOME/.aztec/bin:$HOME/.local/bin:$PATH"  
+  
+# 验证 aztec 命令是否可用  
+if command -v aztec &> /dev/null; then  
+    echo_info "Aztec 安装成功"  
+else  
+    echo_warn "aztec 命令不在 PATH 中，尝试查找..."  
+    AZTEC_BIN=$(find $HOME -name "aztec" -type f -executable 2>/dev/null | grep -v node_modules | head -1)  
+    if [ -n "$AZTEC_BIN" ]; then  
+        AZTEC_DIR=$(dirname "$AZTEC_BIN")  
+        export PATH="$AZTEC_DIR:$PATH"  
+        echo_info "找到 aztec: $AZTEC_BIN"  
+    fi  
+fi  
+
   
 # ============================================  
 # 步骤4: 安装 Cast (Foundry)  
