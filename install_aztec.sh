@@ -71,10 +71,11 @@ fi
 # ============================================  
 echo_info "步骤3: 安装 Aztec 2.1.2..."  
   
-bash -i <(curl -s https://install.aztec.network)  
+# 自动回答 y，并执行安装  
+echo "y" | bash -i <(curl -s https://install.aztec.network)  
   
-# 等待安装完成  
-sleep 3  
+echo_info "等待安装完成..."  
+sleep 5  
   
 # 加载所有可能的环境文件  
 for rc_file in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile"; do  
@@ -83,30 +84,26 @@ for rc_file in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile"; do
     fi  
 done  
   
-# 手动添加常见的安装路径  
-export PATH="$HOME/.aztec/bin:$HOME/.local/bin:$PATH"  
+# 手动添加路径  
+export PATH="$HOME/.aztec/bin:$HOME/.local/bin:$HOME/.nvm/versions/node/*/bin:$PATH"  
   
-# 执行 aztec-up，支持多种方式  
+# 查找并执行 aztec-up  
+echo_info "查找 aztec-up..."  
 if command -v aztec-up &> /dev/null; then  
-    echo_info "执行 aztec-up latest..."  
     aztec-up latest  
 elif [ -f "$HOME/.aztec/bin/aztec-up" ]; then  
-    echo_info "使用完整路径执行 aztec-up..."  
     $HOME/.aztec/bin/aztec-up latest  
 else  
-    echo_warn "找不到 aztec-up，尝试搜索..."  
     AZTEC_UP=$(find $HOME -name "aztec-up" -type f 2>/dev/null | head -1)  
     if [ -n "$AZTEC_UP" ]; then  
-        echo_info "找到: $AZTEC_UP"  
         chmod +x "$AZTEC_UP"  
         "$AZTEC_UP" latest  
-    else  
-        echo_error "无法找到 aztec-up，跳过更新"  
     fi  
 fi  
   
+sleep 3  
+  
 # 再次加载环境  
-sleep 2  
 for rc_file in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile"; do  
     if [ -f "$rc_file" ]; then  
         source "$rc_file"  
@@ -114,18 +111,42 @@ for rc_file in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile"; do
 done  
 export PATH="$HOME/.aztec/bin:$HOME/.local/bin:$PATH"  
   
-# 验证 aztec 命令是否可用  
+# 查找 aztec 命令  
+echo_info "查找 aztec 命令..."  
+AZTEC_CMD=""  
+  
 if command -v aztec &> /dev/null; then  
-    echo_info "Aztec 安装成功"  
+    AZTEC_CMD="aztec"  
 else  
-    echo_warn "aztec 命令不在 PATH 中，尝试查找..."  
-    AZTEC_BIN=$(find $HOME -name "aztec" -type f -executable 2>/dev/null | grep -v node_modules | head -1)  
-    if [ -n "$AZTEC_BIN" ]; then  
-        AZTEC_DIR=$(dirname "$AZTEC_BIN")  
-        export PATH="$AZTEC_DIR:$PATH"  
-        echo_info "找到 aztec: $AZTEC_BIN"  
+    # 搜索所有可能的位置  
+    for search_path in "$HOME/.aztec/bin" "$HOME/.local/bin" "$HOME/.nvm/versions/node/"*"/bin"; do  
+        if [ -f "$search_path/aztec" ]; then  
+            AZTEC_CMD="$search_path/aztec"  
+            export PATH="$search_path:$PATH"  
+            break  
+        fi  
+    done  
+      
+    # 如果还没找到，全局搜索  
+    if [ -z "$AZTEC_CMD" ]; then  
+        AZTEC_CMD=$(find $HOME -name "aztec" -type f -executable 2>/dev/null | grep -v node_modules | head -1)  
+        if [ -n "$AZTEC_CMD" ]; then  
+            export PATH="$(dirname $AZTEC_CMD):$PATH"  
+        fi  
     fi  
 fi  
+  
+if [ -n "$AZTEC_CMD" ]; then  
+    echo_info "找到 aztec: $AZTEC_CMD"  
+    # 导出供后续使用  
+    export AZTEC_BIN="$AZTEC_CMD"  
+else  
+    echo_error "无法找到 aztec 命令"  
+    echo_error "请检查安装是否成功"  
+    exit 1  
+fi  
+  
+echo_info "Aztec 安装完成"  
 
   
 # ============================================  
@@ -171,37 +192,86 @@ fi
 # 步骤6: 生成 Keystore (需要助记词)  
 # ============================================  
 echo_info "步骤6: 生成 Keystore..."  
+  
+echo ""  
 echo_warn "========================================="  
 echo_warn "请输入此节点的12个单词助记词"  
 echo_warn "助记词之间用空格分隔"  
 echo_warn "========================================="  
+echo ""  
 read -p "助记词: " MNEMONIC  
+echo ""  
   
 if [ -z "$MNEMONIC" ]; then  
     echo_error "助记词不能为空"  
+    read -p "按任意键退出..."  
     exit 1  
 fi  
   
-# 生成 keystore  
-aztec validator-keys new \  
-  --fee-recipient 0x0000000000000000000000000000000000000000 \  
-  --mnemonic "$MNEMONIC"  
+# 统计单词数量  
+WORD_COUNT=$(echo "$MNEMONIC" | wc -w)  
+if [ $WORD_COUNT -ne 12 ]; then  
+    echo_warn "助记词应该是 12 个单词，当前输入了 $WORD_COUNT 个"  
+    read -p "是否继续？(y/n): " CONTINUE  
+    if [ "$CONTINUE" != "y" ] && [ "$CONTINUE" != "Y" ]; then  
+        exit 1  
+    fi  
+fi  
   
-echo_info "Keystore 已生成: ~/.aztec/keystore/key1.json"  
+echo_info "生成 Keystore..."  
+  
+# 使用步骤3中找到的 aztec 命令  
+if [ -n "$AZTEC_BIN" ] && [ -f "$AZTEC_BIN" ]; then  
+    echo_info "使用找到的 aztec: $AZTEC_BIN"  
+    $AZTEC_BIN validator-keys new \  
+      --fee-recipient 0x0000000000000000000000000000000000000000 \  
+      --mnemonic "$MNEMONIC"  
+elif command -v aztec &> /dev/null; then  
+    echo_info "使用 PATH 中的 aztec"  
+    aztec validator-keys new \  
+      --fee-recipient 0x0000000000000000000000000000000000000000 \  
+      --mnemonic "$MNEMONIC"  
+else  
+    echo_warn "再次查找 aztec 命令..."  
+    AZTEC_CMD=$(find $HOME -name "aztec" -type f -executable 2>/dev/null | grep -v node_modules | head -1)  
+    if [ -n "$AZTEC_CMD" ]; then  
+        echo_info "找到: $AZTEC_CMD"  
+        $AZTEC_CMD validator-keys new \  
+          --fee-recipient 0x0000000000000000000000000000000000000000 \  
+          --mnemonic "$MNEMONIC"  
+    else  
+        echo_error "无法找到 aztec 命令"  
+        echo_error "请检查安装是否成功"  
+        exit 1  
+    fi  
+fi  
   
 # 验证生成的文件  
 if [ ! -f ~/.aztec/keystore/key1.json ]; then  
     echo_error "Keystore 生成失败"  
+    read -p "按任意键退出..."  
     exit 1  
 fi  
   
-# 提取 BLS 私钥  
+echo_info "Keystore 已生成: ~/.aztec/keystore/key1.json"  
+  
+# 检查是否安装了 jq  
+if ! command -v jq &> /dev/null; then  
+    echo_info "安装 jq 工具..."  
+    apt-get update -qq && apt-get install -y jq -qq  
+fi  
+  
+# 提取密钥信息  
 BLS_SECRET_KEY=$(cat ~/.aztec/keystore/key1.json | jq -r '.validators[0].attester.bls')  
 ETH_ADDRESS=$(cat ~/.aztec/keystore/key1.json | jq -r '.validators[0].attester.eth')  
   
-echo_info "生成的地址信息："  
-echo "  ETH 地址: $ETH_ADDRESS"  
-echo "  BLS 密钥: ${BLS_SECRET_KEY:0:10}...${BLS_SECRET_KEY: -4}"  
+echo ""  
+echo_info "========== 生成的密钥信息 =========="  
+echo "  ETH 地址    : $ETH_ADDRESS"  
+echo "  BLS 密钥    : ${BLS_SECRET_KEY:0:10}...${BLS_SECRET_KEY: -10}"  
+echo_info "===================================="  
+echo ""  
+ 
   
 # 可选：验证 ETH 地址是否与配置文件中的 COINBASE 一致  
 # （如果助记词正确，应该会生成相同的地址）  
