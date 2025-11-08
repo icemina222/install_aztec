@@ -400,29 +400,29 @@ echo ""
 # ============================================  
 echo_info "步骤10: 生成 docker-compose.yml..."  
   
-cat > /root/.aztec/docker-compose.yml <<'DCEOF'  
+cat > /root/.aztec/docker-compose.yml <<'DCEOF'
 services:  
   aztec-sequencer:  
     image: "aztecprotocol/aztec:2.1.2"  
     container_name: "aztec-sequencer"  
     ports:  
-      - \$${AZTEC_PORT}:\$${AZTEC_PORT}  
-      - \$${AZTEC_ADMIN_PORT}:\$${AZTEC_ADMIN_PORT}  
-      - \$${P2P_PORT}:\$${P2P_PORT}  
-      - \$${P2P_PORT}:\$${P2P_PORT}/udp  
+      - ${AZTEC_PORT}:${AZTEC_PORT}  
+      - ${AZTEC_ADMIN_PORT}:${AZTEC_ADMIN_PORT}  
+      - ${P2P_PORT}:${P2P_PORT}  
+      - ${P2P_PORT}:${P2P_PORT}/udp  
     volumes:  
-      - \${DATA_DIRECTORY}:/var/lib/data  
-      - \${KEY_STORE_DIRECTORY}:/var/lib/keystore  
+      - ${DATA_DIRECTORY}:/var/lib/data  
+      - ${KEY_STORE_DIRECTORY}:/var/lib/keystore  
     environment:  
       KEY_STORE_DIRECTORY: /var/lib/keystore  
       DATA_DIRECTORY: /var/lib/data  
-      LOG_LEVEL: \${LOG_LEVEL}  
-      ETHEREUM_HOSTS: \${ETHEREUM_HOSTS}  
-      L1_CONSENSUS_HOST_URLS: \${L1_CONSENSUS_HOST_URLS}  
-      P2P_IP: \${P2P_IP}  
-      P2P_PORT: \${P2P_PORT}  
-      AZTEC_PORT: \${AZTEC_PORT}  
-      AZTEC_ADMIN_PORT: \${AZTEC_ADMIN_PORT}  
+      LOG_LEVEL: ${LOG_LEVEL}  
+      ETHEREUM_HOSTS: ${ETHEREUM_HOSTS}  
+      L1_CONSENSUS_HOST_URLS: ${L1_CONSENSUS_HOST_URLS}  
+      P2P_IP: ${P2P_IP}  
+      P2P_PORT: ${P2P_PORT}  
+      AZTEC_PORT: ${AZTEC_PORT}  
+      AZTEC_ADMIN_PORT: ${AZTEC_ADMIN_PORT}  
     entrypoint: >-  
       node --no-warnings /usr/src/yarn-project/aztec/dest/bin/index.js start --node --archiver --sequencer --network testnet  
     networks:  
@@ -430,7 +430,7 @@ services:
     restart: always  
 networks:  
   aztec:  
-DCEOF  
+DCEOF
   
 echo_info "docker-compose.yml 已创建"  
 echo ""  
@@ -454,7 +454,7 @@ echo_info "步骤12: 检查节点状态..."
 for i in {1..3}; do  
     RESULT=$(curl -s -X POST -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","method":"node_getL2Tips","params":[],"id":67}' http://localhost:8080 | jq -r ".result.proven.number" 2>/dev/null || echo "")  
       
-    if [[ "$$RESULT" =~ ^[0-9]+$$ ]]; then  
+    if [[ "$RESULT" =~ ^[0-9]+$ ]]; then  
         echo_info "✓ 节点运行正常！当前区块高度: $RESULT"  
         break  
     else  
@@ -468,7 +468,7 @@ done
 # ============================================  
 echo_info "步骤13: 部署监控脚本..."  
   
-cat > /root/monitor_aztec_node.sh <<'MONEOF'  
+cat > /root/monitor_aztec_node.sh <<'MONEOF'
 #!/bin/bash  
   
 LOG_FILE="/root/aztec_monitor.log"  
@@ -477,14 +477,14 @@ FAIL_THRESHOLD=3
 FAIL_COUNT=0  
   
 log() {  
-    echo "[$$(date -u '+%Y-%m-%d %H:%M:%S UTC')] $$1" | tee -a "$LOG_FILE"  
+    echo "[$(date -u '+%Y-%m-%d %H:%M:%S UTC')] $1" | tee -a "$LOG_FILE"  
 }  
   
 wait_for_half_hour() {  
     CURRENT_MINUTE=$(date -u +%M)  
     CURRENT_SECOND=$(date -u +%S)  
     MINUTE_MOD=$((CURRENT_MINUTE % 30))  
-    if [ $$MINUTE_MOD -eq 0 ] && [ $$CURRENT_SECOND -eq 0 ]; then  
+    if [ $MINUTE_MOD -eq 0 ] && [ $CURRENT_SECOND -eq 0 ]; then  
         WAIT_SECONDS=0  
     else  
         WAIT_MINUTES=$((30 - MINUTE_MOD - 1))  
@@ -496,7 +496,7 @@ wait_for_half_hour() {
         WAIT_SECONDS=$((WAIT_MINUTES * 60 + WAIT_SECONDS))  
     fi  
     if [ $WAIT_SECONDS -gt 0 ]; then  
-        NEXT_TIME=$$(date -u -d "+$${WAIT_SECONDS} seconds" '+%H:%M:%S')  
+        NEXT_TIME=$(date -u -d "+${WAIT_SECONDS} seconds" '+%H:%M:%S')  
         log "等待到 ${NEXT_TIME} UTC 开始监控"  
         sleep $WAIT_SECONDS  
     fi  
@@ -504,7 +504,7 @@ wait_for_half_hour() {
   
 check_node() {  
     RESULT=$(curl -s -X POST -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","method":"node_getL2Tips","params":[],"id":67}' http://localhost:8080 | jq -r ".result.proven.number" 2>/dev/null || echo "")  
-    if echo "$$RESULT" | grep -qE '^[0-9]+$$'; then  
+    if echo "$RESULT" | grep -qE '^[0-9]+$'; then  
         return 0  
     else  
         return 1  
@@ -539,8 +539,8 @@ while true; do
         FAIL_COUNT=0  
     else  
         FAIL_COUNT=$((FAIL_COUNT + 1))  
-        log "✗ 失败 ($$FAIL_COUNT/$$FAIL_THRESHOLD)"  
-        if [ $$FAIL_COUNT -ge $$FAIL_THRESHOLD ]; then  
+        log "✗ 失败 ($FAIL_COUNT/$FAIL_THRESHOLD)"  
+        if [ $FAIL_COUNT -ge $FAIL_THRESHOLD ]; then  
             log "⚠ 触发重启..."  
             restart_node  
             FAIL_COUNT=0  
@@ -554,7 +554,7 @@ while true; do
     fi  
     sleep $CHECK_INTERVAL  
 done  
-MONEOF  
+MONEOF
   
 chmod +x /root/monitor_aztec_node.sh  
 tmux new-session -d -s aztec_monitor "bash /root/monitor_aztec_node.sh"  
@@ -580,4 +580,4 @@ echo_info "  查看状态: docker ps"
 echo_info "  重启节点: cd /root/.aztec && docker compose restart"  
 echo_info "  查看监控: tail -f /root/aztec_monitor.log"  
 echo_info "  监控进程: tmux attach -t aztec_monitor"  
-echo_info "========================================="  
+echo_info "========================================="
