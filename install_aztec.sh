@@ -406,10 +406,10 @@ services:
     image: "aztecprotocol/aztec:2.1.2"  
     container_name: "aztec-sequencer"  
     ports:  
-      - ${AZTEC_PORT}:${AZTEC_PORT}  
-      - ${AZTEC_ADMIN_PORT}:${AZTEC_ADMIN_PORT}  
-      - ${P2P_PORT}:${P2P_PORT}  
-      - ${P2P_PORT}:${P2P_PORT}/udp  
+      - $${AZTEC_PORT}:$${AZTEC_PORT}  
+      - $${AZTEC_ADMIN_PORT}:$${AZTEC_ADMIN_PORT}  
+      - $${P2P_PORT}:$${P2P_PORT}  
+      - $${P2P_PORT}:$${P2P_PORT}/udp  
     volumes:  
       - ${DATA_DIRECTORY}:/var/lib/data  
       - ${KEY_STORE_DIRECTORY}:/var/lib/keystore  
@@ -424,23 +424,17 @@ services:
       AZTEC_PORT: ${AZTEC_PORT}  
       AZTEC_ADMIN_PORT: ${AZTEC_ADMIN_PORT}  
     entrypoint: >-  
-      node  
-      --no-warnings  
-      /usr/src/yarn-project/aztec/dest/bin/index.js  
-      start  
-      --node  
-      --archiver  
-      --sequencer  
-      --network testnet  
+      node --no-warnings /usr/src/yarn-project/aztec/dest/bin/index.js start --node --archiver --sequencer --network testnet  
     networks:  
       - aztec  
     restart: always  
 networks:  
   aztec:  
-    name: aztec  
 EOF  
   
 echo_info "docker-compose.yml 已创建"  
+echo ""  
+
   
 # ============================================  
 # 步骤11: 启动节点  
