@@ -377,26 +377,23 @@ echo ""
 # 步骤9: 生成 .env 文件  
 # ============================================  
 echo_info "步骤9: 生成 .env 文件..."  
-  
 mkdir -p /root/.aztec/data  
   
-cat > /root/.aztec/.env << ENVEOF  
-DATA_DIRECTORY=./data  
-KEY_STORE_DIRECTORY=./keystore  
-LOG_LEVEL=info  
-ETHEREUM_HOSTS=$L1_RPC  
-L1_CONSENSUS_HOST_URLS=$L1_CONSENSUS  
-P2P_IP=$P2P_IP  
-P2P_PORT=40400  
-AZTEC_PORT=8080  
-AZTEC_ADMIN_PORT=8880  
-ENVEOF  
-
+{  
+    echo "DATA_DIRECTORY=./data"  
+    echo "KEY_STORE_DIRECTORY=./keystore"  
+    echo "LOG_LEVEL=info"  
+    echo "ETHEREUM_HOSTS=$L1_RPC"  
+    echo "L1_CONSENSUS_HOST_URLS=$L1_CONSENSUS"  
+    echo "P2P_IP=$P2P_IP"  
+    echo "P2P_PORT=40400"  
+    echo "AZTEC_PORT=8080"  
+    echo "AZTEC_ADMIN_PORT=8880"  
+} > /root/.aztec/.env  
   
 chmod 600 /root/.aztec/.env  
-echo_info ".env 文件已创建: /root/.aztec/.env"  
+echo_info ".env 文件已创建"  
 echo ""  
-
   
 # ============================================  
 # 步骤10: 生成 docker-compose.yml  
