@@ -434,7 +434,6 @@ DCEOF
   
 echo_info "docker-compose.yml 已创建"  
 echo ""  
-
   
 # ============================================  
 # 步骤11: 启动节点  
@@ -453,11 +452,9 @@ sleep 10
 echo_info "步骤12: 检查节点状态..."  
   
 for i in {1..3}; do  
-    RESULT=$(curl -s -X POST -H 'Content-Type: application/json' \  
-      -d '{"jsonrpc":"2.0","method":"node_getL2Tips","params":[],"id":67}' \  
-      http://localhost:8080 | jq -r ".result.proven.number" 2>/dev/null || echo "")  
+    RESULT=$(curl -s -X POST -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","method":"node_getL2Tips","params":[],"id":67}' http://localhost:8080 | jq -r ".result.proven.number" 2>/dev/null || echo "")  
       
-    if [[ "$RESULT" =~ ^[0-9]+$ ]]; then  
+    if [[ "$$RESULT" =~ ^[0-9]+$$ ]]; then  
         echo_info "✓ 节点运行正常！当前区块高度: $RESULT"  
         break  
     else  
@@ -471,69 +468,103 @@ done
 # ============================================  
 echo_info "步骤13: 部署监控脚本..."  
   
-cat > /root/monitor_aztec_node.sh << 'MONITOR_EOF'  
+cat > /root/monitor_aztec_node.sh <<'MONEOF'  
 #!/bin/bash  
   
 LOG_FILE="/root/aztec_monitor.log"  
-CHECK_INTERVAL=300  # 5分钟检查一次  
+CHECK_INTERVAL=30  
+FAIL_THRESHOLD=3  
+FAIL_COUNT=0  
   
 log() {  
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"  
+    echo "[$$(date -u '+%Y-%m-%d %H:%M:%S UTC')] $$1" | tee -a "$LOG_FILE"  
+}  
+  
+wait_for_half_hour() {  
+    CURRENT_MINUTE=$(date -u +%M)  
+    CURRENT_SECOND=$(date -u +%S)  
+    MINUTE_MOD=$((CURRENT_MINUTE % 30))  
+    if [ $$MINUTE_MOD -eq 0 ] && [ $$CURRENT_SECOND -eq 0 ]; then  
+        WAIT_SECONDS=0  
+    else  
+        WAIT_MINUTES=$((30 - MINUTE_MOD - 1))  
+        WAIT_SECONDS=$((60 - CURRENT_SECOND))  
+        if [ $WAIT_SECONDS -eq 60 ]; then  
+            WAIT_MINUTES=$((WAIT_MINUTES + 1))  
+            WAIT_SECONDS=0  
+        fi  
+        WAIT_SECONDS=$((WAIT_MINUTES * 60 + WAIT_SECONDS))  
+    fi  
+    if [ $WAIT_SECONDS -gt 0 ]; then  
+        NEXT_TIME=$$(date -u -d "+$${WAIT_SECONDS} seconds" '+%H:%M:%S')  
+        log "等待到 ${NEXT_TIME} UTC 开始监控"  
+        sleep $WAIT_SECONDS  
+    fi  
 }  
   
 check_node() {  
-    RESULT=$(curl -s -X POST -H 'Content-Type: application/json' \  
-      -d '{"jsonrpc":"2.0","method":"node_getL2Tips","params":[],"id":67}' \  
-      http://localhost:8080 | jq -r ".result.proven.number" 2>/dev/null || echo "")  
-      
-    if [[ "$RESULT" =~ ^[0-9]+$ ]]; then  
-        log "✓ 节点正常运行 | 区块高度: $RESULT"  
+    RESULT=$(curl -s -X POST -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","method":"node_getL2Tips","params":[],"id":67}' http://localhost:8080 | jq -r ".result.proven.number" 2>/dev/null || echo "")  
+    if echo "$$RESULT" | grep -qE '^[0-9]+$$'; then  
         return 0  
     else  
-        log "✗ 节点检查失败，准备重启..."  
         return 1  
     fi  
 }  
   
 restart_node() {  
-    log "开始重启节点..."  
+    log "======== 开始重启 ========"  
     cd /root/.aztec  
     docker compose down  
     sleep 5  
+    if docker ps -a | grep -q aztec-sequencer; then  
+        docker rm -f aztec-sequencer  
+    fi  
     docker compose up -d  
-    log "节点已重启，等待30秒..."  
     sleep 30  
+    log "======== 完成 ========"  
 }  
   
-log "==================== 监控脚本启动 ===================="  
+log "==================== 监控启动 ===================="  
+wait_for_half_hour  
+log "========== 开始监控 =========="  
   
 while true; do  
-    if ! check_node; then  
-        restart_node  
-        # 重启后再次检查  
-        sleep 30  
-        if check_node; then  
-            log "✓ 重启后节点恢复正常"  
+    if check_node; then  
+        RESULT=$(curl -s -X POST -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","method":"node_getL2Tips","params":[],"id":67}' http://localhost:8080 | jq -r ".result.proven.number" 2>/dev/null)  
+        if [ $FAIL_COUNT -gt 0 ]; then  
+            log "✓ 恢复 | 区块: $RESULT"  
         else  
-            log "✗ 重启后节点仍异常，请手动检查"  
+            log "✓ 正常 | 区块: $RESULT"  
+        fi  
+        FAIL_COUNT=0  
+    else  
+        FAIL_COUNT=$((FAIL_COUNT + 1))  
+        log "✗ 失败 ($$FAIL_COUNT/$$FAIL_THRESHOLD)"  
+        if [ $$FAIL_COUNT -ge $$FAIL_THRESHOLD ]; then  
+            log "⚠ 触发重启..."  
+            restart_node  
+            FAIL_COUNT=0  
+            sleep 60  
+            if check_node; then  
+                log "✓ 重启成功"  
+            else  
+                log "✗ 重启后仍失败"  
+            fi  
         fi  
     fi  
     sleep $CHECK_INTERVAL  
 done  
-MONITOR_EOF  
+MONEOF  
   
 chmod +x /root/monitor_aztec_node.sh  
-  
-# 在 tmux 中启动监控  
 tmux new-session -d -s aztec_monitor "bash /root/monitor_aztec_node.sh"  
   
-echo_info "监控脚本已启动（tmux 会话: aztec_monitor）"  
-echo_info "查看监控日志: tail -f /root/aztec_monitor.log"  
-echo_info "查看监控进程: tmux attach -t aztec_monitor"  
+echo_info "监控脚本已启动"  
   
 # ============================================  
 # 完成  
 # ============================================  
+echo ""  
 echo_info "========================================="  
 echo_info "✓ Aztec 节点安装完成！"  
 echo_info "========================================="  
@@ -542,10 +573,11 @@ echo_info "  Coinbase: $COINBASE"
 echo_info "  P2P IP: $P2P_IP"  
 echo_info "  区块链端口: 8080"  
 echo_info "  管理端口: 8880"  
-echo_info ""  
+echo ""  
 echo_info "常用命令:"  
 echo_info "  查看日志: docker logs -f aztec-sequencer"  
 echo_info "  查看状态: docker ps"  
 echo_info "  重启节点: cd /root/.aztec && docker compose restart"  
 echo_info "  查看监控: tail -f /root/aztec_monitor.log"  
+echo_info "  监控进程: tmux attach -t aztec_monitor"  
 echo_info "========================================="  
