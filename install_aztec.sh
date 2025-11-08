@@ -271,18 +271,47 @@ echo ""
 # （如果助记词正确，应该会生成相同的地址）  
   
 # ============================================  
-# 步骤7: 质押 (Approve)  
+# 步骤7: 执行质押 (Approve)  
 # ============================================  
 echo_info "步骤7: 执行质押 (Approve)..."  
   
-cast send 0x139d2a7a0881e16332d7D1F8DB383A4507E1Ea7A \  
-  "approve(address,uint256)" \  
-  0xebd99ff0ff6677205509ae73f93d0ca52ac85d67 \  
-  200000ether \  
-  --private-key "$VALIDATOR_PRIVATE_KEY" \  
-  --rpc-url "$L1_RPC"  
+echo_info "向合约地址发送 approve 交易..."  
+echo_info "使用 RPC: $L1_RPC"  
   
-echo_info "质押完成"  
+# 确保 cast 命令可用  
+export PATH="$FOUNDRY_BIN_DIR:$PATH"  
+  
+# 检查 cast 是否可用  
+if command -v cast &> /dev/null; then  
+    CAST_CMD="cast"  
+else  
+    CAST_CMD="$FOUNDRY_BIN_DIR/cast"  
+fi  
+  
+# 验证必需参数  
+if [ -z "$L1_RPC" ]; then  
+    echo_error "L1_RPC 为空，无法执行质押"  
+    exit 1  
+fi  
+  
+if [ -z "$VALIDATOR_PRIVATE_KEY" ]; then  
+    echo_error "VALIDATOR_PRIVATE_KEY 为空，无法执行质押"  
+    exit 1  
+fi  
+  
+# 执行质押（单行命令，避免参数丢失）  
+echo_info "执行 cast send..."  
+$CAST_CMD send 0x139d2a7a0881e16332d7D1F8DB383A4507E1Ea7A "approve(address,uint256)" 0xebd99ff0ff6677205509ae73f93d0ca52ac85d67 200000ether --private-key "$VALIDATOR_PRIVATE_KEY" --rpc-url "$L1_RPC"  
+  
+if [ $? -eq 0 ]; then  
+    echo_info "质押完成"  
+else  
+    echo_error "质押失败"  
+    exit 1  
+fi  
+  
+echo ""  
+
   
 # ============================================  
 # 步骤8: 注册验证者  
