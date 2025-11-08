@@ -318,17 +318,49 @@ echo ""
 # ============================================  
 echo_info "步骤8: 注册验证者..."  
   
-aztec add-l1-validator \  
-  --l1-rpc-urls "$L1_RPC" \  
-  --network testnet \  
-  --private-key "$VALIDATOR_PRIVATE_KEY" \  
-  --attester "$COINBASE" \  
-  --withdrawer "$COINBASE" \  
-  --bls-secret-key "$BLS_SECRET_KEY" \  
-  --rollup 0xebd99ff0ff6677205509ae73f93d0ca52ac85d67  
+# 重新从 keystore 提取最新的 BLS 密钥（防止使用旧值）  
+if [ -f ~/.aztec/keystore/key1.json ]; then  
+    BLS_SECRET_KEY=$(cat ~/.aztec/keystore/key1.json | jq -r '.validators[0].attester.bls')  
+    echo_info "重新提取 BLS 密钥: ${BLS_SECRET_KEY:0:10}..."  
+else  
+    echo_error "找不到 keystore 文件"  
+    exit 1  
+fi  
   
-echo_info "验证者注册完成"  
+echo_info "向 Aztec 网络注册验证者..."  
+echo_info "使用 RPC: $L1_RPC"  
+echo_info "Attester: $COINBASE"  
+echo_info "Withdrawer: $COINBASE"  
+echo_info "BLS Key: ${BLS_SECRET_KEY:0:10}..."  
   
+# 使用步骤3找到的 aztec 命令  
+if [ -n "$AZTEC_BIN" ] && [ -f "$AZTEC_BIN" ]; then  
+    AZTEC_CMD="$AZTEC_BIN"  
+elif command -v aztec &> /dev/null; then  
+    AZTEC_CMD="aztec"  
+else  
+    AZTEC_CMD=$(find $HOME -name "aztec" -type f -executable 2>/dev/null | grep -v node_modules | head -1)  
+fi  
+  
+if [ -z "$AZTEC_CMD" ]; then  
+    echo_error "无法找到 aztec 命令"  
+    exit 1  
+fi  
+  
+echo_info "使用 aztec 命令: $AZTEC_CMD"  
+  
+# 执行注册  
+$AZTEC_CMD add-l1-validator --l1-rpc-urls "$L1_RPC" --network testnet --private-key "$VALIDATOR_PRIVATE_KEY" --attester "$COINBASE" --withdrawer "$COINBASE" --bls-secret-key "$BLS_SECRET_KEY" --rollup 0xebd99ff0ff6677205509ae73f93d0ca52ac85d67  
+  
+if [ $? -eq 0 ]; then  
+    echo_info "验证者注册完成"  
+else  
+    echo_error "验证者注册失败"  
+    exit 1  
+fi  
+  
+echo ""  
+
 # ============================================  
 # 步骤9: 生成 .env 文件  
 # ============================================  
