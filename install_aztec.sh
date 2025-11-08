@@ -1,5 +1,6 @@
 #!/bin/bash  
 # install_aztec.sh - Aztec 2.1.2 节点批量安装脚本  
+# 优化版：自动从 mnemonic.txt 读取助记词
   
 set -e  
   
@@ -24,7 +25,14 @@ CONFIG_FILE="/root/aztec_start_command.txt"
 if [ ! -f "$CONFIG_FILE" ]; then  
     echo_error "未找到配置文件: $CONFIG_FILE"  
     exit 1  
-fi  
+fi
+
+# 检查助记词文件
+MNEMONIC_FILE="/root/mnemonic.txt"
+if [ ! -f "$MNEMONIC_FILE" ]; then  
+    echo_error "未找到助记词文件: $MNEMONIC_FILE"  
+    exit 1  
+fi
   
 echo_info "========================================="  
 echo_info "Aztec 2.1.2 节点自动安装脚本"  
@@ -189,36 +197,35 @@ if [ -z "$L1_RPC" ] || [ -z "$L1_CONSENSUS" ] || [ -z "$VALIDATOR_PRIVATE_KEY" ]
 fi  
   
 # ============================================  
-# 步骤6: 生成 Keystore  
+# 步骤6: 读取并验证助记词  
 # ============================================  
-echo_info "步骤6: 生成 Keystore..."  
-  
-echo ""  
-echo_warn "========================================="  
-echo_warn "请输入此节点的12个单词助记词"  
-echo_warn "助记词之间用空格分隔"  
-echo_warn "========================================="  
-echo ""  
-read -p "助记词: " MNEMONIC  
-echo ""  
-  
+echo_info "步骤6: 从 $MNEMONIC_FILE 读取助记词..."  
+
+# 读取助记词并清理空白字符
+MNEMONIC=$(cat "$MNEMONIC_FILE" | tr -s '[:space:]' ' ' | xargs)
+
 if [ -z "$MNEMONIC" ]; then  
-    echo_error "助记词不能为空"  
-    read -p "按任意键退出..."  
+    echo_error "助记词文件为空: $MNEMONIC_FILE"  
     exit 1  
 fi  
   
 # 统计单词数量  
 WORD_COUNT=$(echo "$MNEMONIC" | wc -w)  
+echo_info "检测到 $WORD_COUNT 个助记词"
+
 if [ $WORD_COUNT -ne 12 ]; then  
-    echo_warn "助记词应该是 12 个单词，当前输入了 $WORD_COUNT 个"  
-    read -p "是否继续？(y/n): " CONTINUE  
-    if [ "$CONTINUE" != "y" ] && [ "$CONTINUE" != "Y" ]; then  
-        exit 1  
-    fi  
+    echo_error "助记词应该是 12 个单词，当前为 $WORD_COUNT 个"
+    echo_error "请检查文件: $MNEMONIC_FILE"
+    exit 1
 fi  
+
+echo_info "助记词验证通过 (12个单词)"
+echo_info "助记词前3个单词: $(echo "$MNEMONIC" | awk '{print $1, $2, $3}')..."
   
-echo_info "生成 Keystore..."  
+# ============================================  
+# 步骤7: 生成 Keystore  
+# ============================================  
+echo_info "步骤7: 生成 Keystore..."  
   
 # 使用步骤3中找到的 aztec 命令  
 if [ -n "$AZTEC_BIN" ] && [ -f "$AZTEC_BIN" ]; then  
@@ -243,7 +250,6 @@ fi
 # 验证生成的文件  
 if [ ! -f ~/.aztec/keystore/key1.json ]; then  
     echo_error "Keystore 生成失败"  
-    read -p "按任意键退出..."  
     exit 1  
 fi  
   
@@ -267,13 +273,10 @@ echo_info "===================================="
 echo ""  
 
   
-# 可选：验证 ETH 地址是否与配置文件中的 COINBASE 一致  
-# （如果助记词正确，应该会生成相同的地址）  
-  
 # ============================================  
-# 步骤7: 执行质押 (Approve)  
+# 步骤8: 执行质押 (Approve)  
 # ============================================  
-echo_info "步骤7: 执行质押 (Approve)..."  
+echo_info "步骤8: 执行质押 (Approve)..."  
   
 echo ""  
 echo_warn "质押操作只能执行一次，重复执行会失败"  
@@ -318,10 +321,9 @@ echo ""
 
   
 # ============================================  
+# 步骤9: 注册验证者  
 # ============================================  
-# 步骤8: 注册验证者  
-# ============================================  
-echo_info "步骤8: 注册验证者..."  
+echo_info "步骤9: 注册验证者..."  
   
 echo ""  
 echo_warn "注册操作只能执行一次，重复执行会失败"  
@@ -374,9 +376,9 @@ echo ""
 
 
 # ============================================  
-# 步骤9: 生成 .env 文件  
+# 步骤10: 生成 .env 文件  
 # ============================================  
-echo_info "步骤9: 生成 .env 文件..."  
+echo_info "步骤10: 生成 .env 文件..."  
 mkdir -p /root/.aztec/data  
   
 {  
@@ -396,11 +398,9 @@ echo_info ".env 文件已创建"
 echo ""  
   
 # ============================================  
-# 步骤10: 生成 docker-compose.yml  
+# 步骤11: 生成 docker-compose.yml  
 # ============================================  
-echo_info "步骤10: 生成 docker-compose.yml..."  
-  
-echo_info "步骤10: 生成 docker-compose.yml..."  
+echo_info "步骤11: 生成 docker-compose.yml..."  
   
 cat > /root/.aztec/docker-compose.yml <<'DCEOF'
 services:  
@@ -438,9 +438,9 @@ echo_info "docker-compose.yml 已创建"
 echo ""  
   
 # ============================================  
-# 步骤11: 启动节点  
+# 步骤12: 启动节点  
 # ============================================  
-echo_info "步骤11: 启动 Aztec 节点..."  
+echo_info "步骤12: 启动 Aztec 节点..."  
   
 cd /root/.aztec  
 docker compose up -d  
@@ -449,9 +449,9 @@ echo_info "节点已启动，等待10秒后检查状态..."
 sleep 10  
   
 # ============================================  
-# 步骤12: 检查节点状态  
+# 步骤13: 检查节点状态  
 # ============================================  
-echo_info "步骤12: 检查节点状态..."  
+echo_info "步骤13: 检查节点状态..."  
   
 for i in {1..3}; do  
     RESULT=$(curl -s -X POST -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","method":"node_getL2Tips","params":[],"id":67}' http://localhost:8080 | jq -r ".result.proven.number" 2>/dev/null || echo "")  
@@ -466,94 +466,196 @@ for i in {1..3}; do
 done  
   
 # ============================================  
-# 步骤13: 部署监控脚本  
+# 步骤14: 部署监控脚本  
 # ============================================  
-echo_info "步骤13: 部署监控脚本..."  
+echo_info "步骤14: 部署监控脚本..."  
   
 cat > /root/monitor_aztec_node.sh <<'MONEOF'
 #!/bin/bash  
   
-LOG_FILE="/root/aztec_monitor.log"  
-CHECK_INTERVAL=30  
-FAIL_THRESHOLD=3  
-FAIL_COUNT=0  
-  
+LOG_FILE="/root/aztec_monitor.log"
+CHECK_INTERVAL=60           # 每60秒检查一次
+FAIL_THRESHOLD=3            # 连续失败3次触发重启
+RESTART_COOLDOWN=300        # 重启后冷却5分钟再检查
+FAIL_COUNT=0
+LAST_BLOCK=0
+BLOCK_STUCK_COUNT=0
+BLOCK_STUCK_THRESHOLD=5     # 区块高度5分钟不变视为卡住
+
 log() {  
     echo "[$(date -u '+%Y-%m-%d %H:%M:%S UTC')] $1" | tee -a "$LOG_FILE"  
 }  
   
-wait_for_half_hour() {  
+# 等待到下一个30分钟整点（如 10:00, 10:30, 11:00）
+wait_for_next_checkpoint() {  
     CURRENT_MINUTE=$(date -u +%M)  
     CURRENT_SECOND=$(date -u +%S)  
-    MINUTE_MOD=$((CURRENT_MINUTE % 30))  
-    if [ $MINUTE_MOD -eq 0 ] && [ $CURRENT_SECOND -eq 0 ]; then  
-        WAIT_SECONDS=0  
-    else  
-        WAIT_MINUTES=$((30 - MINUTE_MOD - 1))  
-        WAIT_SECONDS=$((60 - CURRENT_SECOND))  
-        if [ $WAIT_SECONDS -eq 60 ]; then  
-            WAIT_MINUTES=$((WAIT_MINUTES + 1))  
-            WAIT_SECONDS=0  
-        fi  
-        WAIT_SECONDS=$((WAIT_MINUTES * 60 + WAIT_SECONDS))  
-    fi  
-    if [ $WAIT_SECONDS -gt 0 ]; then  
-        NEXT_TIME=$(date -u -d "+${WAIT_SECONDS} seconds" '+%H:%M:%S')  
-        log "等待到 ${NEXT_TIME} UTC 开始监控"  
-        sleep $WAIT_SECONDS  
-    fi  
+    
+    # 计算到下一个30分钟整点的秒数
+    if [ $CURRENT_MINUTE -lt 30 ]; then
+        TARGET_MINUTE=30
+    else
+        TARGET_MINUTE=60
+    fi
+    
+    WAIT_MINUTES=$((TARGET_MINUTE - CURRENT_MINUTE - 1))
+    WAIT_SECONDS=$((60 - CURRENT_SECOND))
+    
+    if [ $WAIT_SECONDS -eq 60 ]; then
+        WAIT_MINUTES=$((WAIT_MINUTES + 1))
+        WAIT_SECONDS=0
+    fi
+    
+    TOTAL_WAIT_SECONDS=$((WAIT_MINUTES * 60 + WAIT_SECONDS))
+    
+    if [ $TOTAL_WAIT_SECONDS -gt 0 ]; then
+        NEXT_TIME=$(date -u -d "+${TOTAL_WAIT_SECONDS} seconds" '+%H:%M:%S')
+        log "⏰ 等待到 ${NEXT_TIME} UTC ($(($TOTAL_WAIT_SECONDS / 60))分钟) 开始监控"
+        sleep $TOTAL_WAIT_SECONDS
+    fi
 }  
   
 check_node() {  
-    RESULT=$(curl -s -X POST -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","method":"node_getL2Tips","params":[],"id":67}' http://localhost:8080 | jq -r ".result.proven.number" 2>/dev/null || echo "")  
-    if echo "$RESULT" | grep -qE '^[0-9]+$'; then  
+    local result=$(curl -s --max-time 10 -X POST -H 'Content-Type: application/json' \
+        -d '{"jsonrpc":"2.0","method":"node_getL2Tips","params":[],"id":67}' \
+        http://localhost:8080 | jq -r ".result.proven.number" 2>/dev/null || echo "")  
+    
+    if echo "$result" | grep -qE '^[0-9]+
+  
+chmod +x /root/monitor_aztec_node.sh  
+tmux new-session -d -s aztec_monitor "bash /root/monitor_aztec_node.sh"  
+  
+echo_info "监控脚本已启动"  
+  
+# ============================================  
+# 完成  
+# ============================================  
+echo ""  
+echo_info "========================================="  
+echo_info "✓ Aztec 节点安装完成！"  
+echo_info "========================================="  
+echo_info "节点信息:"  
+echo_info "  Coinbase: $COINBASE"  
+echo_info "  P2P IP: $P2P_IP"  
+echo_info "  区块链端口: 8080"  
+echo_info "  管理端口: 8880"  
+echo ""  
+echo_info "常用命令:"  
+echo_info "  查看日志: docker logs -f aztec-sequencer"  
+echo_info "  查看状态: docker ps"  
+echo_info "  重启节点: cd /root/.aztec && docker compose restart"  
+echo_info "  查看监控: tail -f /root/aztec_monitor.log"  
+echo_info "  监控进程: tmux attach -t aztec_monitor"  
+echo_info "========================================="; then  
+        echo "$result"
         return 0  
     else  
+        echo ""
         return 1  
     fi  
 }  
   
 restart_node() {  
-    log "======== 开始重启 ========"  
-    cd /root/.aztec  
-    docker compose down  
+    log "🔄 ======== 开始重启节点 ========"  
+    
+    cd /root/.aztec || { log "❌ 无法进入 /root/.aztec 目录"; return 1; }
+    
+    # 停止容器
+    log "⏹️  停止容器..."
+    docker compose down
     sleep 5  
+    
+    # 强制清理残留容器
     if docker ps -a | grep -q aztec-sequencer; then  
+        log "🗑️  清理残留容器..."
         docker rm -f aztec-sequencer  
     fi  
+    
+    # 启动容器
+    log "▶️  启动容器..."
     docker compose up -d  
-    sleep 30  
-    log "======== 完成 ========"  
+    
+    log "⏳ 等待 ${RESTART_COOLDOWN} 秒让节点稳定..."
+    sleep $RESTART_COOLDOWN
+    
+    log "✅ ======== 重启完成 ========"  
 }  
   
-log "==================== 监控启动 ===================="  
-wait_for_half_hour  
-log "========== 开始监控 =========="  
+# 检查区块高度是否卡住
+check_block_stuck() {
+    local current_block=$1
+    
+    if [ "$current_block" == "$LAST_BLOCK" ]; then
+        BLOCK_STUCK_COUNT=$((BLOCK_STUCK_COUNT + 1))
+        if [ $BLOCK_STUCK_COUNT -ge $BLOCK_STUCK_THRESHOLD ]; then
+            log "⚠️  区块高度卡在 $current_block 已超过 $((BLOCK_STUCK_THRESHOLD * CHECK_INTERVAL / 60)) 分钟"
+            return 1
+        fi
+    else
+        BLOCK_STUCK_COUNT=0
+        LAST_BLOCK=$current_block
+    fi
+    return 0
+}
+
+log "==================== 监控程序启动 ===================="  
+log "📋 配置信息:"
+log "   检查间隔: ${CHECK_INTERVAL}秒"
+log "   失败阈值: ${FAIL_THRESHOLD}次"
+log "   重启冷却: ${RESTART_COOLDOWN}秒"
+log "   区块卡住阈值: ${BLOCK_STUCK_THRESHOLD}次"
+
+wait_for_next_checkpoint  
+log "========== ✅ 开始监控 =========="  
   
 while true; do  
-    if check_node; then  
-        RESULT=$(curl -s -X POST -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","method":"node_getL2Tips","params":[],"id":67}' http://localhost:8080 | jq -r ".result.proven.number" 2>/dev/null)  
+    CURRENT_BLOCK=$(check_node)
+    
+    if [ $? -eq 0 ] && [ -n "$CURRENT_BLOCK" ]; then
+        # 节点响应正常
+        if ! check_block_stuck "$CURRENT_BLOCK"; then
+            log "⚠️  检测到区块卡住，触发重启..."
+            restart_node
+            FAIL_COUNT=0
+            BLOCK_STUCK_COUNT=0
+            LAST_BLOCK=0
+            continue
+        fi
+        
+        # 判断是否从失败中恢复
         if [ $FAIL_COUNT -gt 0 ]; then  
-            log "✓ 恢复 | 区块: $RESULT"  
+            log "✅ 节点恢复 | 区块: $CURRENT_BLOCK"  
         else  
-            log "✓ 正常 | 区块: $RESULT"  
+            # 每30次检查输出一次正常日志（避免日志过多）
+            CHECK_COUNT=$((CHECK_COUNT + 1))
+            if [ $((CHECK_COUNT % 30)) -eq 0 ] || [ $CHECK_COUNT -eq 1 ]; then
+                log "✓ 正常运行 | 区块: $CURRENT_BLOCK | 已监控: $((CHECK_COUNT * CHECK_INTERVAL / 60)) 分钟"
+            fi
         fi  
         FAIL_COUNT=0  
     else  
+        # 节点响应失败
         FAIL_COUNT=$((FAIL_COUNT + 1))  
-        log "✗ 失败 ($FAIL_COUNT/$FAIL_THRESHOLD)"  
+        log "❌ 检查失败 ($FAIL_COUNT/$FAIL_THRESHOLD) | 节点无响应"  
+        
         if [ $FAIL_COUNT -ge $FAIL_THRESHOLD ]; then  
-            log "⚠ 触发重启..."  
+            log "🚨 连续失败 ${FAIL_THRESHOLD} 次，触发重启..."  
             restart_node  
-            FAIL_COUNT=0  
-            sleep 60  
-            if check_node; then  
-                log "✓ 重启成功"  
+            FAIL_COUNT=0
+            BLOCK_STUCK_COUNT=0
+            LAST_BLOCK=0
+            
+            # 重启后验证
+            sleep 10
+            VERIFY_BLOCK=$(check_node)
+            if [ $? -eq 0 ] && [ -n "$VERIFY_BLOCK" ]; then  
+                log "✅ 重启成功 | 当前区块: $VERIFY_BLOCK"  
             else  
-                log "✗ 重启后仍失败"  
+                log "❌ 重启后节点仍无响应，将继续监控"  
             fi  
         fi  
     fi  
+    
     sleep $CHECK_INTERVAL  
 done  
 MONEOF
