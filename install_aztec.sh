@@ -400,29 +400,29 @@ echo ""
 # ============================================  
 echo_info "步骤10: 生成 docker-compose.yml..."  
   
-cat > /root/.aztec/docker-compose.yml << 'EOF'  
+cat > /root/.aztec/docker-compose.yml <<'DCEOF'  
 services:  
   aztec-sequencer:  
     image: "aztecprotocol/aztec:2.1.2"  
     container_name: "aztec-sequencer"  
     ports:  
-      - $${AZTEC_PORT}:$${AZTEC_PORT}  
-      - $${AZTEC_ADMIN_PORT}:$${AZTEC_ADMIN_PORT}  
-      - $${P2P_PORT}:$${P2P_PORT}  
-      - $${P2P_PORT}:$${P2P_PORT}/udp  
+      - \$${AZTEC_PORT}:\$${AZTEC_PORT}  
+      - \$${AZTEC_ADMIN_PORT}:\$${AZTEC_ADMIN_PORT}  
+      - \$${P2P_PORT}:\$${P2P_PORT}  
+      - \$${P2P_PORT}:\$${P2P_PORT}/udp  
     volumes:  
-      - ${DATA_DIRECTORY}:/var/lib/data  
-      - ${KEY_STORE_DIRECTORY}:/var/lib/keystore  
+      - \${DATA_DIRECTORY}:/var/lib/data  
+      - \${KEY_STORE_DIRECTORY}:/var/lib/keystore  
     environment:  
       KEY_STORE_DIRECTORY: /var/lib/keystore  
       DATA_DIRECTORY: /var/lib/data  
-      LOG_LEVEL: ${LOG_LEVEL}  
-      ETHEREUM_HOSTS: ${ETHEREUM_HOSTS}  
-      L1_CONSENSUS_HOST_URLS: ${L1_CONSENSUS_HOST_URLS}  
-      P2P_IP: ${P2P_IP}  
-      P2P_PORT: ${P2P_PORT}  
-      AZTEC_PORT: ${AZTEC_PORT}  
-      AZTEC_ADMIN_PORT: ${AZTEC_ADMIN_PORT}  
+      LOG_LEVEL: \${LOG_LEVEL}  
+      ETHEREUM_HOSTS: \${ETHEREUM_HOSTS}  
+      L1_CONSENSUS_HOST_URLS: \${L1_CONSENSUS_HOST_URLS}  
+      P2P_IP: \${P2P_IP}  
+      P2P_PORT: \${P2P_PORT}  
+      AZTEC_PORT: \${AZTEC_PORT}  
+      AZTEC_ADMIN_PORT: \${AZTEC_ADMIN_PORT}  
     entrypoint: >-  
       node --no-warnings /usr/src/yarn-project/aztec/dest/bin/index.js start --node --archiver --sequencer --network testnet  
     networks:  
@@ -430,7 +430,7 @@ services:
     restart: always  
 networks:  
   aztec:  
-EOF  
+DCEOF  
   
 echo_info "docker-compose.yml 已创建"  
 echo ""  
