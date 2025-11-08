@@ -103,7 +103,8 @@ if [ -z "$STY" ]; then
     echo ""  
       
     # 保存脚本路径（修复语法错误）  
-    SCRIPT_FULL_PATH="$$(cd "$$(dirname "$$0")" && pwd)/$$(basename "$0")"  
+    SCRIPT_FULL_PATH="$$(realpath "$$0")"  
+  
       
     # 在 screen 中重新运行自己  
     echo_info "创建 screen 会话: $SCREEN_NAME"  
